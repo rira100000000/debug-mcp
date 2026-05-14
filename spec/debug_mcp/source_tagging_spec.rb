@@ -15,10 +15,28 @@ RSpec.describe DebugMcp::SourceTagging do
       expect(out).to include("Thread.current[:_debug_mcp_event_source]=:debug_eval")
     end
 
-    it "saves and restores the previous Thread-local value" do
+    it "saves the previous value onto a Thread-local stack and restores it via pop" do
       out = described_class.wrap("expr")
-      expect(out).to include("__debug_mcp_prev_src=Thread.current[:_debug_mcp_event_source]")
-      expect(out).to include("ensure Thread.current[:_debug_mcp_event_source]=__debug_mcp_prev_src")
+      expect(out).to include("Thread.current[:_debug_mcp_event_source_stack]")
+      expect(out).to match(/\<\<\s*::Thread\.current\[:_debug_mcp_event_source\]/)
+      expect(out).to include("Thread.current[:_debug_mcp_event_source_stack].pop")
+    end
+
+    it "is nested-safe: inner wrap restores outer's value, not the deepest base" do
+      Thread.current[:_debug_mcp_event_source] = :outer
+      inner_value = nil
+      mid_value = nil
+
+      outer_block = "#{described_class.wrap("inner_value = Thread.current[:_debug_mcp_event_source]; nil")}; " \
+                    "mid_value = Thread.current[:_debug_mcp_event_source]; nil"
+      eval(described_class.wrap(outer_block))
+
+      expect(inner_value).to eq(:debug_eval)
+      expect(mid_value).to eq(:debug_eval) # inner restored to outer's set value
+      expect(Thread.current[:_debug_mcp_event_source]).to eq(:outer) # back to original outer
+    ensure
+      Thread.current[:_debug_mcp_event_source] = nil
+      Thread.current[:_debug_mcp_event_source_stack] = nil
     end
 
     it "produces a Ruby expression whose value is the wrapped code's value" do
