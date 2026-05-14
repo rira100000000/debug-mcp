@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "base64"
+require_relative "source_tagging"
 
 module DebugMcp
   module RailsHelper
@@ -63,6 +64,11 @@ module DebugMcp
     # result by the debug gem, which works even in signal trap context.
     # Returns nil if the result is nil or evaluation fails.
     def eval_expr(client, expr)
+      # Note: internal probes use simple expressions (Rails.root, Rails.env,
+      # Dir.pwd, etc.) that don't fire ActiveSupport::Notifications events,
+      # so SourceTagging.wrap isn't applied here. Tools that take arbitrary
+      # user expressions (evaluate_code, inspect_object) handle tagging
+      # themselves at the call site.
       result = client.send_command("p #{expr}")
       cleaned = result.strip.sub(/\A=> /, "")
       return nil if cleaned == "nil" || cleaned.empty?

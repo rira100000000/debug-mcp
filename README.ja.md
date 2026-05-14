@@ -214,6 +214,55 @@ Railsプロセスを検出すると自動的に登録されます。
 | `rails_routes` | ルーティング一覧（verb, path, controller#action）、コントローラ・パスでフィルタ可能 |
 | `rails_model` | モデル構造：カラム・アソシエーション・バリデーション・enum・スコープを表示 |
 
+## Rails イベントキャプチャ
+
+Rails アプリへ `trigger_request` を実行すると、レスポンスにリクエスト中の挙動を構造化した `Rails Events` セクションが付加されます。
+
+- SQL クエリ (実行時間、bind 値、query name、cached フラグ)
+- レンダリング (template / partial / collection)
+- キャッシュ操作 (read/write/fetch_hit、hit/miss)
+- enqueue された ActiveJob
+- リクエストのライフサイクル (controller#action、status、view/db runtime)
+
+debug-mcp が初回の `trigger_request` 時に `ActiveSupport::Notifications` の subscriber を Rails プロセスに動的注入することで実現しています。Rails アプリ側に gem 追加は不要です。
+
+### 出力例
+
+```
+Agent: trigger_request(method: "GET", url: "http://localhost:3000/users/1")
+
+  HTTP 200 OK
+  {...response body...}
+
+  --- Rails Events ---
+  ## Request
+  GET /users/1 → UsersController#show
+  Status: 200 — total 35.4ms (view 12.5ms, db 4.2ms)
+
+  ## SQL (1 query)
+  1. (0.66ms) User Load SELECT "users".* FROM "users" WHERE "users"."id" = 1 LIMIT 1
+```
+
+### フィルタリング: アプリ実行と debugger 操作の分離
+
+breakpoint 停止中に `evaluate_code` や `inspect_object` を実行すると、それらが発行した AR クエリもリクエストスレッド上で動くためバッファに入ります。debug-mcp はそれらに `source: :debug_eval` タグを付けるので、デフォルト表示からは除外され、アプリ自身の挙動だけが見える状態になります。
+
+- **デフォルト**: `:debug_eval` のイベントを非表示。アプリ自身の動作だけを表示。
+- **`include_debug_eval: true`** を `trigger_request` に渡す: デバッガが触ったクエリも含めて全件表示。
+
+### 出力量の調整
+
+`trigger_request` の `event_limits` オプションでカテゴリ別の上限を上書きできます。
+
+```
+trigger_request(
+  method: "GET", url: "...",
+  event_limits: { sql: 100, render: null }  # null は上限なし
+)
+```
+
+デフォルト: `sql=30`, `render=20`, `cache=20`, `job=無制限`, `logger=50`。
+
 ## ワークフロー例
 
 ### Rubyスクリプトのデバッグ

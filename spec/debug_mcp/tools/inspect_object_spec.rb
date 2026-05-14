@@ -5,13 +5,27 @@ RSpec.describe DebugMcp::Tools::InspectObject do
   let(:manager) { build_mock_manager(client: client) }
   let(:server_context) { { session_manager: manager } }
 
+  # Command matchers: inspect_object now wraps user expressions with
+  # SourceTagging (ADR-0003) so events fired during inspection are tagged
+  # :debug_eval. Tests match against substrings instead of literal commands.
+  def pp_value_matching(expr)
+    a_string_matching(/\App\(.*\(#{Regexp.escape(expr)}\).*\)\z/m)
+  end
+
+  def meta_matching(expr)
+    a_string_matching(/\Ap\(.*instance_variables.*class_variables.*\)\z/m)
+      .and(a_string_matching(/#{Regexp.escape(expr)}/))
+  end
+
+  def cvar_matching(expr)
+    a_string_matching(/\App\(.*class_variable_get.*\)\z/m)
+      .and(a_string_matching(/#{Regexp.escape(expr)}/))
+  end
+
   describe ".call" do
     it "returns value, class, and instance variables" do
-      allow(client).to receive(:send_command).with("pp user").and_return('#<User id: 1, name: "Alice">')
-      allow(client).to receive(:send_command)
-        .with("p [(user).class.to_s, (user).instance_variables, " \
-              "(user).is_a?(Module) ? (user).class_variables : nil]")
-        .and_return('=> ["User", [:@id, :@name], nil]')
+      allow(client).to receive(:send_command).with(pp_value_matching("user")).and_return('#<User id: 1, name: "Alice">')
+      allow(client).to receive(:send_command).with(meta_matching("user")).and_return('=> ["User", [:@id, :@name], nil]')
 
       response = described_class.call(expression: "user", server_context: server_context)
       text = response_text(response)
@@ -23,11 +37,8 @@ RSpec.describe DebugMcp::Tools::InspectObject do
     end
 
     it "handles timeout on meta query gracefully" do
-      allow(client).to receive(:send_command).with("pp x").and_return("42")
-      allow(client).to receive(:send_command)
-        .with("p [(x).class.to_s, (x).instance_variables, " \
-              "(x).is_a?(Module) ? (x).class_variables : nil]")
-        .and_raise(DebugMcp::TimeoutError, "timeout")
+      allow(client).to receive(:send_command).with(pp_value_matching("x")).and_return("42")
+      allow(client).to receive(:send_command).with(meta_matching("x")).and_raise(DebugMcp::TimeoutError, "timeout")
 
       response = described_class.call(expression: "x", server_context: server_context)
       text = response_text(response)
@@ -38,11 +49,8 @@ RSpec.describe DebugMcp::Tools::InspectObject do
     end
 
     it "handles unparseable meta output gracefully" do
-      allow(client).to receive(:send_command).with("pp x").and_return("42")
-      allow(client).to receive(:send_command)
-        .with("p [(x).class.to_s, (x).instance_variables, " \
-              "(x).is_a?(Module) ? (x).class_variables : nil]")
-        .and_return("=> something unexpected")
+      allow(client).to receive(:send_command).with(pp_value_matching("x")).and_return("42")
+      allow(client).to receive(:send_command).with(meta_matching("x")).and_return("=> something unexpected")
 
       response = described_class.call(expression: "x", server_context: server_context)
       text = response_text(response)
@@ -52,15 +60,9 @@ RSpec.describe DebugMcp::Tools::InspectObject do
 
     context "class variables" do
       it "displays class variable values when inspecting a Class object" do
-        allow(client).to receive(:send_command).with("pp Order").and_return("Order")
-        allow(client).to receive(:send_command)
-          .with("p [(Order).class.to_s, (Order).instance_variables, " \
-                "(Order).is_a?(Module) ? (Order).class_variables : nil]")
-          .and_return('=> ["Class", [:@table_name], [:@@count, :@@default_status]]')
-        allow(client).to receive(:send_command)
-          .with("pp Hash[(Order).class_variables.map{|v|" \
-                "[v,begin;(Order).class_variable_get(v);rescue;'(error)';end]}]")
-          .and_return('{:@@count=>42, :@@default_status=>:pending}')
+        allow(client).to receive(:send_command).with(pp_value_matching("Order")).and_return("Order")
+        allow(client).to receive(:send_command).with(meta_matching("Order")).and_return('=> ["Class", [:@table_name], [:@@count, :@@default_status]]')
+        allow(client).to receive(:send_command).with(cvar_matching("Order")).and_return('{:@@count=>42, :@@default_status=>:pending}')
 
         response = described_class.call(expression: "Order", server_context: server_context)
         text = response_text(response)
@@ -70,15 +72,9 @@ RSpec.describe DebugMcp::Tools::InspectObject do
       end
 
       it "falls back to names only when class variable value query times out" do
-        allow(client).to receive(:send_command).with("pp Order").and_return("Order")
-        allow(client).to receive(:send_command)
-          .with("p [(Order).class.to_s, (Order).instance_variables, " \
-                "(Order).is_a?(Module) ? (Order).class_variables : nil]")
-          .and_return('=> ["Class", [:@table_name], [:@@count]]')
-        allow(client).to receive(:send_command)
-          .with("pp Hash[(Order).class_variables.map{|v|" \
-                "[v,begin;(Order).class_variable_get(v);rescue;'(error)';end]}]")
-          .and_raise(DebugMcp::TimeoutError, "timeout")
+        allow(client).to receive(:send_command).with(pp_value_matching("Order")).and_return("Order")
+        allow(client).to receive(:send_command).with(meta_matching("Order")).and_return('=> ["Class", [:@table_name], [:@@count]]')
+        allow(client).to receive(:send_command).with(cvar_matching("Order")).and_raise(DebugMcp::TimeoutError, "timeout")
 
         response = described_class.call(expression: "Order", server_context: server_context)
         text = response_text(response)
@@ -86,11 +82,8 @@ RSpec.describe DebugMcp::Tools::InspectObject do
       end
 
       it "does not display class variables section for regular instances" do
-        allow(client).to receive(:send_command).with("pp obj").and_return('#<Object:0x00007f>')
-        allow(client).to receive(:send_command)
-          .with("p [(obj).class.to_s, (obj).instance_variables, " \
-                "(obj).is_a?(Module) ? (obj).class_variables : nil]")
-          .and_return('=> ["Object", [:@x], nil]')
+        allow(client).to receive(:send_command).with(pp_value_matching("obj")).and_return('#<Object:0x00007f>')
+        allow(client).to receive(:send_command).with(meta_matching("obj")).and_return('=> ["Object", [:@x], nil]')
 
         response = described_class.call(expression: "obj", server_context: server_context)
         text = response_text(response)
@@ -100,11 +93,8 @@ RSpec.describe DebugMcp::Tools::InspectObject do
       end
 
       it "displays empty class variables for a Class with no class variables" do
-        allow(client).to receive(:send_command).with("pp MyClass").and_return("MyClass")
-        allow(client).to receive(:send_command)
-          .with("p [(MyClass).class.to_s, (MyClass).instance_variables, " \
-                "(MyClass).is_a?(Module) ? (MyClass).class_variables : nil]")
-          .and_return('=> ["Class", [], []]')
+        allow(client).to receive(:send_command).with(pp_value_matching("MyClass")).and_return("MyClass")
+        allow(client).to receive(:send_command).with(meta_matching("MyClass")).and_return('=> ["Class", [], []]')
 
         response = described_class.call(expression: "MyClass", server_context: server_context)
         text = response_text(response)
@@ -126,11 +116,8 @@ RSpec.describe DebugMcp::Tools::InspectObject do
         client_in_trap = build_mock_client(trap_context: true)
         manager_in_trap = build_mock_manager(client: client_in_trap)
 
-        allow(client_in_trap).to receive(:send_command).with("pp user").and_return("42")
-        allow(client_in_trap).to receive(:send_command)
-          .with("p [(user).class.to_s, (user).instance_variables, " \
-                "(user).is_a?(Module) ? (user).class_variables : nil]")
-          .and_return('=> ["Integer", [], nil]')
+        allow(client_in_trap).to receive(:send_command).with(pp_value_matching("user")).and_return("42")
+        allow(client_in_trap).to receive(:send_command).with(meta_matching("user")).and_return('=> ["Integer", [], nil]')
 
         response = described_class.call(
           expression: "user",
@@ -141,11 +128,8 @@ RSpec.describe DebugMcp::Tools::InspectObject do
       end
 
       it "does not append [trap context] when not in trap context" do
-        allow(client).to receive(:send_command).with("pp x").and_return("42")
-        allow(client).to receive(:send_command)
-          .with("p [(x).class.to_s, (x).instance_variables, " \
-                "(x).is_a?(Module) ? (x).class_variables : nil]")
-          .and_return('=> ["Integer", [], nil]')
+        allow(client).to receive(:send_command).with(pp_value_matching("x")).and_return("42")
+        allow(client).to receive(:send_command).with(meta_matching("x")).and_return('=> ["Integer", [], nil]')
 
         response = described_class.call(expression: "x", server_context: server_context)
         text = response_text(response)
@@ -159,6 +143,8 @@ RSpec.describe DebugMcp::Tools::InspectObject do
         allow(client).to receive(:pending_http).and_return(
           { holder: holder, method: "GET", url: "http://localhost:3000/" },
         )
+        allow(client).to receive(:send_command).with(pp_value_matching("x")).and_return("42")
+        allow(client).to receive(:send_command).with(meta_matching("x")).and_return('=> ["Integer", [], nil]')
 
         response = described_class.call(expression: "x", server_context: server_context)
         text = response_text(response)
@@ -171,10 +157,22 @@ RSpec.describe DebugMcp::Tools::InspectObject do
         allow(client).to receive(:pending_http).and_return(
           { holder: holder, method: "POST", url: "http://localhost:3000/users" },
         )
+        allow(client).to receive(:send_command).with(pp_value_matching("x")).and_return("42")
+        allow(client).to receive(:send_command).with(meta_matching("x")).and_return('=> ["Integer", [], nil]')
 
         response = described_class.call(expression: "x", server_context: server_context)
         text = response_text(response)
         expect(text).to include("HTTP request (POST http://localhost:3000/users) failed")
+      end
+    end
+
+    context "event source tagging (ADR-0003)" do
+      it "wraps the value query with SourceTagging" do
+        allow(client).to receive(:send_command).with(pp_value_matching("user")).and_return("...")
+        allow(client).to receive(:send_command).with(meta_matching("user")).and_return('=> ["User", [], nil]')
+
+        described_class.call(expression: "user", server_context: server_context)
+        expect(client).to have_received(:send_command).with(a_string_matching(/Thread\.current\[:_debug_mcp_event_source\]=:debug_eval/)).at_least(:twice)
       end
     end
   end

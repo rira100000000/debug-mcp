@@ -152,16 +152,17 @@ RSpec.describe DebugMcp::Tools::EvaluateCode do
         expect(client).to have_received(:send_command).with(/Thread\.current\[:_debug_mcp_event_source\]=:debug_eval/)
       end
 
-      it "clears the tag via ensure block on single-line eval" do
+      it "restores the previous tag via ensure block on single-line eval" do
         allow(client).to receive(:send_command).with(/\$__debug_mcp_err=nil; pp/).and_return("=> 42")
         allow(client).to receive(:send_command).with("p $__debug_mcp_err").and_return('=> nil')
         allow(client).to receive(:send_command).with("$stdout = STDOUT; p $__debug_mcp_cap&.string").and_return('=> ""')
 
         described_class.call(code: "1 + 1", server_context: server_context)
-        expect(client).to have_received(:send_command).with(/ensure Thread\.current\[:_debug_mcp_event_source\]=nil/)
+        # SourceTagging.wrap uses save/restore (nested-safe) instead of clearing to nil
+        expect(client).to have_received(:send_command).with(/ensure Thread\.current\[:_debug_mcp_event_source\]=__debug_mcp_prev_src/)
       end
 
-      it "sets and clears the tag in Base64-encoded multi-line eval" do
+      it "sets and restores the tag in Base64-encoded multi-line eval" do
         allow(client).to receive(:send_command).with(/Base64/).and_return("=> 3")
         allow(client).to receive(:send_command).with("p $__debug_mcp_err").and_return('=> nil')
         allow(client).to receive(:send_command).with("$stdout = STDOUT; p $__debug_mcp_cap&.string").and_return('=> ""')
@@ -169,7 +170,7 @@ RSpec.describe DebugMcp::Tools::EvaluateCode do
         described_class.call(code: "a = 1\na + 2", server_context: server_context)
         expect(client).to have_received(:send_command).with(
           a_string_matching(/Thread\.current\[:_debug_mcp_event_source\]=:debug_eval/)
-            .and(a_string_matching(/ensure Thread\.current\[:_debug_mcp_event_source\]=nil/)),
+            .and(a_string_matching(/ensure Thread\.current\[:_debug_mcp_event_source\]=__debug_mcp_prev_src/)),
         )
       end
     end

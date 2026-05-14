@@ -215,6 +215,55 @@ These tools are automatically registered when a Rails process is detected.
 | `rails_routes` | Show routes (verb, path, controller#action), filterable by controller or path |
 | `rails_model` | Show model structure: columns, associations, validations, enums, scopes |
 
+## Rails event capture
+
+When `trigger_request` is used against a Rails app, the response includes a structured `Rails Events` section that surfaces what happened inside the request:
+
+- SQL queries (duration, bind values, query name, cached flag)
+- Renders (templates, partials, collections)
+- Cache operations (read/write/fetch_hit, hit/miss)
+- Enqueued ActiveJob jobs
+- Request lifecycle (controller#action, status, view/db runtime)
+
+This is captured via an `ActiveSupport::Notifications` subscriber that debug-mcp injects into the Rails process at first use — no gem installation in your Rails app required.
+
+### Example output
+
+```
+Agent: trigger_request(method: "GET", url: "http://localhost:3000/users/1")
+
+  HTTP 200 OK
+  {...response body...}
+
+  --- Rails Events ---
+  ## Request
+  GET /users/1 → UsersController#show
+  Status: 200 — total 35.4ms (view 12.5ms, db 4.2ms)
+
+  ## SQL (1 query)
+  1. (0.66ms) User Load SELECT "users".* FROM "users" WHERE "users"."id" = 1 LIMIT 1
+```
+
+### Filtering: separating app execution from debugger inspection
+
+When you call `evaluate_code` or `inspect_object` at a breakpoint, any AR queries those make run on the request thread and would otherwise look like application SQL. debug-mcp tags them with `source: :debug_eval` so the default view stays clean.
+
+- **Default**: `:debug_eval` events are hidden — what you see is the app's own work.
+- **`include_debug_eval: true`** on `trigger_request`: include them, useful for seeing what the debugger touched.
+
+### Tuning the output volume
+
+`trigger_request` accepts an `event_limits` object to override per-category caps:
+
+```
+trigger_request(
+  method: "GET", url: "...",
+  event_limits: { sql: 100, render: null }  # null disables the limit
+)
+```
+
+Defaults: `sql=30`, `render=20`, `cache=20`, `job=unlimited`, `logger=50`.
+
 ## Workflows
 
 ### Debug a Ruby script

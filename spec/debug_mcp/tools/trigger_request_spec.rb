@@ -1044,6 +1044,110 @@ RSpec.describe DebugMcp::Tools::TriggerRequest do
     end
   end
 
+  describe ".resolve_event_limits (private)" do
+    it "returns DEFAULT_LIMITS when overrides is nil" do
+      result = described_class.send(:resolve_event_limits, nil)
+      expect(result).to eq(DebugMcp::EventFormatter::DEFAULT_LIMITS)
+    end
+
+    it "returns DEFAULT_LIMITS when overrides is empty" do
+      result = described_class.send(:resolve_event_limits, {})
+      expect(result).to eq(DebugMcp::EventFormatter::DEFAULT_LIMITS)
+    end
+
+    it "merges symbol-key overrides into defaults" do
+      result = described_class.send(:resolve_event_limits, { sql: 100 })
+      expect(result[:sql]).to eq(100)
+      expect(result[:render]).to eq(20)
+    end
+
+    it "accepts string keys as well as symbols" do
+      result = described_class.send(:resolve_event_limits, { "sql" => 5, "render" => 3 })
+      expect(result[:sql]).to eq(5)
+      expect(result[:render]).to eq(3)
+    end
+
+    it "allows nil to disable a limit" do
+      result = described_class.send(:resolve_event_limits, { sql: nil })
+      expect(result[:sql]).to be_nil
+    end
+
+    it "coerces stringified integers" do
+      result = described_class.send(:resolve_event_limits, { "sql" => "42" })
+      expect(result[:sql]).to eq(42)
+    end
+
+    it "ignores unknown keys" do
+      result = described_class.send(:resolve_event_limits, { bogus: 1 })
+      expect(result).not_to have_key(:bogus)
+    end
+
+    it "preserves the default for keys whose override is unparseable" do
+      result = described_class.send(:resolve_event_limits, { "sql" => "not-a-number" })
+      expect(result[:sql]).to eq(DebugMcp::EventFormatter::DEFAULT_LIMITS[:sql])
+    end
+  end
+
+  describe ".call with event_limits / include_debug_eval" do
+    let(:events) do
+      [
+        { name: "process_action.action_controller", duration_ms: 50.0, source: :request,
+          data: { controller: "C", action: "a", method: "GET", path: "/", status: 200 } },
+        { name: "sql.active_record", duration_ms: 1.0, source: :request,
+          data: { sql: "SELECT 1", query_name: "App", binds: [], cached: false } },
+        { name: "sql.active_record", duration_ms: 0.5, source: :debug_eval,
+          data: { sql: "PRAGMA table_xinfo(\"users\")", query_name: "SCHEMA", binds: [], cached: false } },
+      ]
+    end
+
+    before do
+      allow(DebugMcp::RailsHelper).to receive(:rails?).and_return(true)
+      allow(DebugMcp::NotificationsSubscriber).to receive(:install).and_return(true)
+      allow(DebugMcp::NotificationsSubscriber).to receive(:fetch_by_request_id).and_return(events)
+      allow(client).to receive(:continue_and_wait).and_return({ type: :interrupted, output: "" })
+      allow(client).to receive(:ensure_paused).and_return("")
+      stub_http_response
+    end
+
+    it "hides :debug_eval events by default" do
+      response = described_class.call(
+        method: "GET", url: "http://localhost:3000/",
+        server_context: server_context,
+      )
+      text = response_text(response)
+      expect(text).to include("## SQL (1 query)")
+      expect(text).not_to include("PRAGMA")
+    end
+
+    it "shows :debug_eval events when include_debug_eval: true" do
+      response = described_class.call(
+        method: "GET", url: "http://localhost:3000/",
+        include_debug_eval: true,
+        server_context: server_context,
+      )
+      text = response_text(response)
+      expect(text).to include("## SQL (2 queries)")
+      expect(text).to include("PRAGMA")
+    end
+
+    it "applies user-supplied event_limits to truncate sections" do
+      bulky = (1..50).map do |i|
+        { name: "sql.active_record", duration_ms: 1.0, source: :request,
+          data: { sql: "SELECT #{i}", query_name: "", binds: [], cached: false } }
+      end
+      allow(DebugMcp::NotificationsSubscriber).to receive(:fetch_by_request_id).and_return(bulky)
+
+      response = described_class.call(
+        method: "GET", url: "http://localhost:3000/",
+        event_limits: { "sql" => 5 },
+        server_context: server_context,
+      )
+      text = response_text(response)
+      expect(text).to include("## SQL (50 queries)")
+      expect(text).to include("... and 45 more (limit=5)")
+    end
+  end
+
   describe "DEFAULT_TIMEOUT" do
     it "is 30" do
       expect(DebugMcp::Tools::TriggerRequest::DEFAULT_TIMEOUT).to eq(30)

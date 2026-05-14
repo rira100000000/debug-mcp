@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.2.0 — 2026-05-14
+
+### Features
+
+- **Structured Rails event capture in `trigger_request`** — The response now includes
+  a `Rails Events` section with SQL queries, rendered templates, cache operations,
+  enqueued jobs, and request lifecycle info, sourced from `ActiveSupport::Notifications`.
+  LLM agents can detect N+1 queries, verify cache effectiveness, and track side-effects
+  using structured data instead of parsing log text.
+
+  How it works: debug-mcp injects a subscriber into the Rails process via `evaluate_code`
+  at first use (idempotent, no gem install needed in the Rails app), tags HTTP requests
+  with an auto-generated `X-Request-Id`, and correlates the captured events back to the
+  triggering request. Events live in a per-process ring buffer (1000 events) protected
+  by a Mutex.
+
+- **Source tagging to separate app execution from debugger inspection** — When
+  `evaluate_code` or `inspect_object` is used at a breakpoint, the AR queries they
+  fire run on the request thread. Those events are tagged `source: :debug_eval` so
+  they don't appear to be part of application execution. The default view shows only
+  `:request` events; pass `include_debug_eval: true` to `trigger_request` to see all.
+  Implemented via `Thread.current[:_debug_mcp_event_source]` with save/restore so
+  nested wrapping is safe.
+
+- **New `trigger_request` options** — `event_limits` (per-category count overrides;
+  defaults `sql: 30, render: 20, cache: 20, job: unlimited, logger: 50`; pass `null`
+  to disable a limit) and `include_debug_eval` (boolean) for tuning the event output.
+
+### Internal
+
+- New modules: `DebugMcp::NotificationsSubscriber`, `DebugMcp::EventFormatter`,
+  `DebugMcp::SourceTagging`.
+- `evaluate_code` and `inspect_object` now wrap user expressions with `SourceTagging.wrap`.
+
 ## Renamed: `girb-mcp` → `debug-mcp` (2026-04-28)
 
 This gem was previously released on RubyGems as `girb-mcp`. It has been renamed to

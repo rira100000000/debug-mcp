@@ -66,6 +66,21 @@ module DebugMcp
             type: "string",
             description: "Debug session ID to monitor for breakpoint hits (uses default if omitted)",
           },
+          event_limits: {
+            type: "object",
+            description: "Override the per-category event count limits in the structured 'Rails Events' " \
+                         "section. Partial overrides supported. Keys: sql, render, cache, job, logger. " \
+                         "Pass null for a key to disable its limit. " \
+                         "Defaults: sql=30, render=20, cache=20, job=unlimited, logger=50. " \
+                         "Example: {\"sql\": 100, \"render\": null}",
+          },
+          include_debug_eval: {
+            type: "boolean",
+            description: "Include events triggered by debug-mcp's own evaluate_code / inspect_object calls " \
+                         "(tagged source: :debug_eval). Defaults to false — debugger-driven SQL is hidden " \
+                         "to keep the request view focused on application execution. " \
+                         "Set true when you want to see what the debugger touched.",
+          },
         },
         required: ["method", "url"],
       )
@@ -74,9 +89,11 @@ module DebugMcp
         MAX_LOG_BYTES = 4000
 
         def call(method:, url:, headers: {}, body: nil, cookies: nil, skip_csrf: nil,
-                 timeout: nil, session_id: nil, server_context:)
+                 timeout: nil, session_id: nil, event_limits: nil, include_debug_eval: false,
+                 server_context:)
           manager = server_context[:session_manager]
           timeout_sec = timeout || DEFAULT_TIMEOUT
+          formatter_limits = resolve_event_limits(event_limits)
 
           # Auto-detect Content-Type if body is present and no Content-Type header set
           headers = (headers || {}).dup
@@ -140,7 +157,9 @@ module DebugMcp
             end
 
             response = append_captured_logs(response, log_capture)
-            append_notifications_events(response, client, request_id, subscriber_ready)
+            append_notifications_events(response, client, request_id, subscriber_ready,
+                                        limits: formatter_limits,
+                                        include_debug_eval: include_debug_eval)
           ensure
             # Only restore CSRF when the process is paused (at a breakpoint).
             # If the process is running (interrupted/timeout), sending commands
@@ -451,14 +470,15 @@ module DebugMcp
         # and append a structured section to the response. Best-effort: returns the
         # response unchanged if the subscriber is unavailable or the client is not
         # paused (we cannot send_command on a running process).
-        def append_notifications_events(response, client, request_id, subscriber_ready)
+        def append_notifications_events(response, client, request_id, subscriber_ready,
+                                        limits: EventFormatter::DEFAULT_LIMITS, include_debug_eval: false)
           return response unless subscriber_ready
           return response unless client&.connected? && client.paused
 
           events = NotificationsSubscriber.fetch_by_request_id(client, request_id)
           return response if events.nil? || events.empty?
 
-          formatted = EventFormatter.format(events)
+          formatted = EventFormatter.format(events, limits: limits, include_debug_eval: include_debug_eval)
           return response if formatted.nil? || formatted.empty?
 
           existing = response.content.first
@@ -468,6 +488,27 @@ module DebugMcp
           MCP::Tool::Response.new([{ type: "text", text: updated_text }])
         rescue StandardError
           response
+        end
+
+        # Merge user-supplied event_limits hash into the DEFAULT_LIMITS.
+        # Accepts both symbol and string keys. Returns a fully-populated hash
+        # suitable for EventFormatter.format.
+        def resolve_event_limits(overrides)
+          return EventFormatter::DEFAULT_LIMITS if overrides.nil? || overrides.empty?
+
+          result = EventFormatter::DEFAULT_LIMITS.dup
+          overrides.each do |k, v|
+            key = k.to_sym
+            next unless result.key?(key)
+            # Accept nil (no limit), integers, and other numerics; coerce strings if possible.
+            result[key] = case v
+                          when nil then nil
+                          when Integer then v
+                          when String then (Integer(v, exception: false) || result[key])
+                          else result[key]
+                          end
+          end
+          result.freeze
         end
 
         # Read new log entries since the snapshot and append to the response.

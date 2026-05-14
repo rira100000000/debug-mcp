@@ -230,20 +230,18 @@ module DebugMcp
         def build_eval_command(code)
           # Tag any ActiveSupport::Notifications events fired during this eval
           # so trigger_request can filter them out (ADR-0003).
-          # ensure clears the Thread-local even on exception.
+          # SourceTagging.wrap uses save/restore so nested wraps don't clobber
+          # any outer source value.
           if code.include?("\n") || !code.ascii_only?
             encoded = Base64.strict_encode64(code.encode(Encoding::UTF_8))
+            inner = "eval(::Base64.decode64('#{encoded}').force_encoding('UTF-8'), binding)"
             "$__debug_mcp_err=nil; pp(begin; require 'base64'; " \
-            "Thread.current[:_debug_mcp_event_source]=:debug_eval; " \
-            "eval(::Base64.decode64('#{encoded}').force_encoding('UTF-8'), binding); " \
-            'rescue => __e; $__debug_mcp_err="#{__e.class}: #{__e.message}"; nil; ' \
-            "ensure Thread.current[:_debug_mcp_event_source]=nil; end)"
+            "#{DebugMcp::SourceTagging.wrap(inner)}; " \
+            'rescue => __e; $__debug_mcp_err="#{__e.class}: #{__e.message}"; nil; end)'
           else
             "$__debug_mcp_err=nil; pp(begin; " \
-            "Thread.current[:_debug_mcp_event_source]=:debug_eval; " \
-            "(#{code}); " \
-            'rescue => __e; $__debug_mcp_err="#{__e.class}: #{__e.message}"; nil; ' \
-            "ensure Thread.current[:_debug_mcp_event_source]=nil; end)"
+            "#{DebugMcp::SourceTagging.wrap(code)}; " \
+            'rescue => __e; $__debug_mcp_err="#{__e.class}: #{__e.message}"; nil; end)'
           end
         end
 

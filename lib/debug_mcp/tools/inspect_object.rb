@@ -2,6 +2,7 @@
 
 require "mcp"
 require_relative "../pending_http_helper"
+require_relative "../source_tagging"
 
 module DebugMcp
   module Tools
@@ -38,16 +39,19 @@ module DebugMcp
 
           parts = []
 
+          # User-supplied expressions can hit ActiveRecord and fire Notifications
+          # events. Tag them as :debug_eval so trigger_request can filter them
+          # out (ADR-0003).
+
           # RT 1: Get the pretty-printed value (primary - if this fails, expression is invalid)
-          value_output = client.send_command("pp #{expression}")
+          value_output = client.send_command("pp(#{DebugMcp::SourceTagging.wrap(expression)})")
           parts << "Value:\n#{value_output}"
 
           # RT 2: Get class + instance variables (+ class variables if Module) in a single command
           begin
-            meta_output = client.send_command(
-              "p [(#{expression}).class.to_s, (#{expression}).instance_variables, " \
-              "(#{expression}).is_a?(Module) ? (#{expression}).class_variables : nil]",
-            )
+            meta_expr = "[(#{expression}).class.to_s, (#{expression}).instance_variables, " \
+                        "(#{expression}).is_a?(Module) ? (#{expression}).class_variables : nil]"
+            meta_output = client.send_command("p(#{DebugMcp::SourceTagging.wrap(meta_expr)})")
             class_name, ivars, cvars = parse_meta(meta_output)
             parts << "Class: #{class_name}" if class_name
             parts << "Instance variables: #{ivars}" if ivars
@@ -55,10 +59,9 @@ module DebugMcp
             # RT 3: Get class variable values (only for Module/Class with class variables)
             if cvars && cvars != "[]"
               begin
-                cvar_values = client.send_command(
-                  "pp Hash[(#{expression}).class_variables.map{|v|" \
-                  "[v,begin;(#{expression}).class_variable_get(v);rescue;'(error)';end]}]",
-                )
+                cvar_expr = "Hash[(#{expression}).class_variables.map{|v|" \
+                            "[v,begin;(#{expression}).class_variable_get(v);rescue;'(error)';end]}]"
+                cvar_values = client.send_command("pp(#{DebugMcp::SourceTagging.wrap(cvar_expr)})")
                 parts << "Class variables:\n#{cvar_values}"
               rescue DebugMcp::TimeoutError
                 parts << "Class variables: #{cvars}"
