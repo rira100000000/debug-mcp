@@ -2,9 +2,12 @@
 
 require "mcp"
 require "net/http"
+require "securerandom"
 require "uri"
 require "json"
 require_relative "../rails_helper"
+require_relative "../notifications_subscriber"
+require_relative "../event_formatter"
 
 module DebugMcp
   module Tools
@@ -92,10 +95,18 @@ module DebugMcp
             end
           end
 
+          # Inject a request ID so we can correlate Notifications events with this request.
+          # Rails (ActionDispatch::RequestId middleware) honors X-Request-Id if present.
+          request_id = SecureRandom.uuid
+          unless headers.any? { |k, _| k.to_s.downcase == "x-request-id" }
+            headers["X-Request-Id"] = request_id
+          end
+
           # CSRF handling: disable forgery protection for non-GET requests on Rails
           csrf_disabled = false
           client = nil
           log_capture = nil
+          subscriber_ready = false
           begin
             client = manager.client(session_id)
             # Recover paused state if a previous timeout left @paused=false
@@ -112,6 +123,8 @@ module DebugMcp
               if method != "GET" && should_disable_csrf?(skip_csrf, client)
                 csrf_disabled = temporarily_disable_csrf(client)
               end
+              # Inject the Notifications subscriber lazily (idempotent).
+              subscriber_ready = NotificationsSubscriber.install(client)
               # Snapshot log file position before request for Rails log capture
               log_capture = start_log_capture(client)
             end
@@ -126,7 +139,8 @@ module DebugMcp
               handle_without_session(method, url, headers, body, timeout_sec)
             end
 
-            append_captured_logs(response, log_capture)
+            response = append_captured_logs(response, log_capture)
+            append_notifications_events(response, client, request_id, subscriber_ready)
           ensure
             # Only restore CSRF when the process is paused (at a breakpoint).
             # If the process is running (interrupted/timeout), sending commands
@@ -431,6 +445,29 @@ module DebugMcp
           { path: log_path, position: File.size(log_path) }
         rescue StandardError
           nil
+        end
+
+        # Query the Notifications subscriber buffer for events tied to this request
+        # and append a structured section to the response. Best-effort: returns the
+        # response unchanged if the subscriber is unavailable or the client is not
+        # paused (we cannot send_command on a running process).
+        def append_notifications_events(response, client, request_id, subscriber_ready)
+          return response unless subscriber_ready
+          return response unless client&.connected? && client.paused
+
+          events = NotificationsSubscriber.fetch_by_request_id(client, request_id)
+          return response if events.nil? || events.empty?
+
+          formatted = EventFormatter.format(events)
+          return response if formatted.nil? || formatted.empty?
+
+          existing = response.content.first
+          return response unless existing.is_a?(Hash) && existing[:type] == "text"
+
+          updated_text = existing[:text] + "\n\n--- Rails Events ---\n" + formatted
+          MCP::Tool::Response.new([{ type: "text", text: updated_text }])
+        rescue StandardError
+          response
         end
 
         # Read new log entries since the snapshot and append to the response.

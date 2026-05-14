@@ -228,14 +228,22 @@ module DebugMcp
         # gem protocol is line-based) or non-ASCII characters (to avoid
         # encoding conflicts on the socket).
         def build_eval_command(code)
+          # Tag any ActiveSupport::Notifications events fired during this eval
+          # so trigger_request can filter them out (ADR-0003).
+          # ensure clears the Thread-local even on exception.
           if code.include?("\n") || !code.ascii_only?
             encoded = Base64.strict_encode64(code.encode(Encoding::UTF_8))
             "$__debug_mcp_err=nil; pp(begin; require 'base64'; " \
+            "Thread.current[:_debug_mcp_event_source]=:debug_eval; " \
             "eval(::Base64.decode64('#{encoded}').force_encoding('UTF-8'), binding); " \
-            'rescue => __e; $__debug_mcp_err="#{__e.class}: #{__e.message}"; nil; end)'
+            'rescue => __e; $__debug_mcp_err="#{__e.class}: #{__e.message}"; nil; ' \
+            "ensure Thread.current[:_debug_mcp_event_source]=nil; end)"
           else
-            "$__debug_mcp_err=nil; pp(begin; (#{code}); " \
-            'rescue => __e; $__debug_mcp_err="#{__e.class}: #{__e.message}"; nil; end)'
+            "$__debug_mcp_err=nil; pp(begin; " \
+            "Thread.current[:_debug_mcp_event_source]=:debug_eval; " \
+            "(#{code}); " \
+            'rescue => __e; $__debug_mcp_err="#{__e.class}: #{__e.message}"; nil; ' \
+            "ensure Thread.current[:_debug_mcp_event_source]=nil; end)"
           end
         end
 
