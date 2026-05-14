@@ -28,6 +28,15 @@
   defaults `sql: 30, render: 20, cache: 20, job: unlimited, logger: 50`; pass `null`
   to disable a limit) and `include_debug_eval` (boolean) for tuning the event output.
 
+### Bug Fixes (pre-release)
+
+- **`SourceTagging.wrap` nested-safety** — The initial implementation saved the
+  prior Thread-local value in a local variable, which a nested wrap within the
+  same eval overwrote, causing the outer's `ensure` to restore the wrong value.
+  Switched to a Thread-local stack (`:_debug_mcp_event_source_stack`) so each
+  push/pop pair restores the correct prior source regardless of nesting depth.
+  Discovered during real-Rails verification before the 0.2.0 release.
+
 ### Internal
 
 - New modules: `DebugMcp::NotificationsSubscriber`, `DebugMcp::EventFormatter`,
