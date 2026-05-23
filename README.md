@@ -412,7 +412,11 @@ Agent: get_context()
 
 debug-mcp is a debugging tool that intentionally provides deep runtime access. Here's what you should know:
 
-**Structured tools minimize arbitrary code execution.** Most debugging tasks — viewing variables, reading source code, inspecting model structure — are handled by dedicated tools that don't run arbitrary code. `evaluate_code` is available for runtime inspection, and a built-in safety checker warns about dangerous operations.
+**For development environments only.** debug-mcp is meant for attaching to your own local or development processes — not production. It grants deep runtime access (including code execution via `evaluate_code`) and is not designed to be safe against a hostile target.
+
+**Structured tools minimize arbitrary code execution.** Most debugging tasks — viewing variables, reading source code, inspecting model structure — are handled by dedicated tools that don't run arbitrary code. `evaluate_code` is available for runtime inspection, and a built-in safety checker warns about dangerous operations. Note that this checker and the tool-selection guidance are advisory — they nudge the agent but do not block execution.
+
+**Don't point it at untrusted data.** The agent reads runtime data from the target process (variable values, DB rows, HTTP responses) and can act on it via `evaluate_code`. Because the safeguards above are advisory, a prompt-injection payload in that data could steer the agent. Don't run debug-mcp against a process handling input where injection could be introduced.
 
 **The debug gem has no authentication.** Anyone who can reach the debug socket can execute arbitrary code in the target process. Always bind to localhost (`127.0.0.1`) or use Unix sockets. See the [Docker section](#debug-a-dockerized-rails-app) for configuration examples.
 
