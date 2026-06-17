@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.1 — 2026-06-17
+
+### Bug Fixes
+
+- **Fix `list_files` with explicit `session_id`** — `list_files` used an outdated
+  `SessionManager#get` call path when a session ID was provided, causing
+  `NoMethodError` instead of listing files. It now uses the same
+  `SessionManager#client(session_id)` API as other tools.
+
 ## 0.2.0 — 2026-05-14
 
 ### Features

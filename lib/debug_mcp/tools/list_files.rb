@@ -55,11 +55,7 @@ module DebugMcp
         private
 
         def get_client(server_context, session_id)
-          if session_id
-            server_context[:session_manager].get(session_id).client
-          else
-            server_context[:session_manager].client
-          end
+          server_context[:session_manager].client(session_id)
         rescue DebugMcp::Error
           nil
         end
@@ -76,11 +72,7 @@ module DebugMcp
         end
 
         def remote_cwd(server_context, session_id)
-          client = if session_id
-            server_context[:session_manager].get(session_id).client
-          else
-            server_context[:session_manager].client
-          end
+          client = server_context[:session_manager].client(session_id)
           client.auto_repause!
           result = client.send_command("p Dir.pwd")
           cleaned = result.strip.sub(/\A=> /, "")

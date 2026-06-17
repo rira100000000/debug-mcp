@@ -32,6 +32,21 @@ RSpec.describe DebugMcp::Tools::ListFiles do
       expect(text).to include("config")
     end
 
+    it "uses the requested session when session_id is provided" do
+      allow(manager).to receive(:client).with("custom-session").and_return(client)
+      allow(manager).to receive(:client).with(nil).and_return(nil)
+
+      response = described_class.call(
+        path: tmpdir,
+        session_id: "custom-session",
+        server_context: server_context,
+      )
+      text = response_text(response)
+
+      expect(text).to include("Gemfile")
+      expect(manager).to have_received(:client).with("custom-session")
+    end
+
     it "includes entry count in header" do
       response = described_class.call(path: tmpdir, server_context: server_context)
       text = response_text(response)
