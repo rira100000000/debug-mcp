@@ -122,9 +122,11 @@ module DebugMcp
       trigger_request handles resuming the process automatically.
 
       Rails debugging:
-      Rails-specific tools (rails_info, rails_routes, rails_model) are always available, \
-      but they require a connected Rails process and will return an error when used \
-      against a plain Ruby script.
+      Rails-specific tools (rails_info, rails_routes, rails_model, rails_recent_events) are \
+      always available, but they require a connected Rails process and will return an error \
+      when used against a plain Ruby script. rails_recent_events shows recent internal events \
+      (SQL, renders, cache, job enqueues) captured from the running process; it is forward-only \
+      (only events after its first call are visible).
 
       Rails debugging workflow:
       1. Start the Rails server with debugging: RUBY_DEBUG_OPEN=true bin/rails server
@@ -140,7 +142,7 @@ module DebugMcp
       7. To debug another request, set new breakpoints and call trigger_request again
       8. When done debugging, use 'disconnect' to detach and resume the server
 
-      Note: rails_info, rails_routes, and rails_model may not work in trap context. \
+      Note: rails_info, rails_routes, rails_model, and rails_recent_events may not work in trap context. \
       Use them after hitting a breakpoint via trigger_request.
 
       Docker / containerized processes:

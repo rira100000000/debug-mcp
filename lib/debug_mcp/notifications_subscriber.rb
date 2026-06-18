@@ -131,7 +131,7 @@ module DebugMcp
                   dropped_count: @dropped,
                   oldest_seq: (@buffer.first && @buffer.first[:seq]),
                   newest_seq: (@buffer.last && @buffer.last[:seq]),
-                  next_seq: @seq,
+                  last_seq: @seq,
                   subscriptions_count: @subscriptions.size,
                 }
               end

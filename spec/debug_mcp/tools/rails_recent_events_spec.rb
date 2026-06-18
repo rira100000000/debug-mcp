@@ -87,6 +87,26 @@ RSpec.describe DebugMcp::Tools::RailsRecentEvents do
     expect(text).to include("trigger_request")
   end
 
+  it "reports installed: true from the install result even if metadata comes back empty" do
+    allow(DebugMcp::NotificationsSubscriber).to receive(:metadata).with(client).and_return({})
+    response = described_class.call(server_context: server_context)
+    text = response_text(response)
+
+    # We just installed successfully, so the header must not claim otherwise,
+    # even though the metadata round-trip returned nothing parseable.
+    expect(text).to include("installed: true")
+  end
+
+  it "caps the after_seq cursor result by the requested limit" do
+    many = Array.new(10) { |i| { name: "sql.active_record", seq: i + 1, duration_ms: 1, data: { sql: "S" }, source: "request" } }
+    allow(DebugMcp::NotificationsSubscriber).to receive(:fetch_after_seq).and_return(many)
+    expect(DebugMcp::EventFormatter).to receive(:format) do |events, **_|
+      expect(events.size).to eq(3)
+      "## SQL (3 queries)"
+    end
+    described_class.call(after_seq: 0, limit: 3, server_context: server_context)
+  end
+
   it "reports when the subscriber could not be installed" do
     allow(DebugMcp::NotificationsSubscriber).to receive(:install).with(client).and_return(false)
     response = described_class.call(server_context: server_context)

@@ -97,11 +97,15 @@ module DebugMcp
                                  "in the target process.\n\n#{RailsHelper::TRAP_CONTEXT_HINT}")
           end
 
-          events = fetch_events(client, after_seq: after_seq, limit: resolve_limit(limit))
+          limit = resolve_limit(limit)
+          events = fetch_events(client, after_seq: after_seq, limit: limit)
           events = filter_by_kinds(events, kinds)
           metadata = NotificationsSubscriber.metadata(client)
 
-          text_response(build_output(events, metadata, kinds, include_debug_eval))
+          # `installed` is the result of the install we just performed — the only
+          # trustworthy signal here. metadata[:installed] can be missing if the
+          # metadata round-trip itself returned no parseable object.
+          text_response(build_output(events, metadata, kinds, include_debug_eval, limit, installed))
         rescue DebugMcp::Error => e
           text_response("Error: #{e.message}")
         end
@@ -115,7 +119,9 @@ module DebugMcp
 
         def fetch_events(client, after_seq:, limit:)
           if after_seq
-            NotificationsSubscriber.fetch_after_seq(client, after_seq.to_i)
+            # Forward cursor paging: oldest-after-cursor first, capped by limit
+            # so a busy buffer never dumps all 1000 events in one response.
+            NotificationsSubscriber.fetch_after_seq(client, after_seq.to_i).first(limit)
           else
             NotificationsSubscriber.fetch_last(client, limit)
           end
@@ -130,9 +136,15 @@ module DebugMcp
           events.select { |e| matchers.any? { |m| m.call(e[:name].to_s) } }
         end
 
-        def build_output(events, metadata, kinds, include_debug_eval)
-          header = build_metadata_header(metadata, kinds, include_debug_eval)
-          formatted = EventFormatter.format(events, include_debug_eval: include_debug_eval)
+        def build_output(events, metadata, kinds, include_debug_eval, limit, installed)
+          header = build_metadata_header(metadata, kinds, include_debug_eval, installed)
+          # Align EventFormatter's per-section display caps with the user's limit
+          # so the "... and N more (limit=...)" note matches what was requested
+          # instead of EventFormatter's internal defaults.
+          limits = EventFormatter::DEFAULT_LIMITS.merge(
+            sql: limit, render: limit, cache: limit, job: limit,
+          )
+          formatted = EventFormatter.format(events, limits: limits, include_debug_eval: include_debug_eval)
 
           body = if formatted.nil? || formatted.empty?
             "(no matching events captured since the subscriber was installed)"
@@ -143,10 +155,9 @@ module DebugMcp
           "#{header}\n\n#{body}"
         end
 
-        def build_metadata_header(metadata, kinds, include_debug_eval)
-          installed = metadata[:installed]
+        def build_metadata_header(metadata, kinds, include_debug_eval, installed)
           lines = ["=== Rails Recent Events ==="]
-          lines << "installed: #{installed != false}"
+          lines << "installed: #{installed ? true : false}"
           lines << "forward_only: true (only events fired after install are visible)"
           lines << "paused_only: true"
           lines << "events_before_install_are_unavailable: true"
