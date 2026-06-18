@@ -35,6 +35,9 @@ module DebugMcp
       DEFAULT_LIMIT = 20
       DEFAULT_PREVIEW_CHARS = 500
       MAX_PREVIEW_CHARS = 5000
+      # Hard ceiling applied even when include_body is true, so a multi-megabyte
+      # body can never cross the line-oriented debug socket as one JSON line.
+      MAX_BODY_CHARS = 50_000
 
       input_schema(
         properties: {
@@ -44,8 +47,8 @@ module DebugMcp
           },
           include_body: {
             type: "boolean",
-            description: "Return the full (still capped) body instead of a short preview. " \
-                         "Off by default because bodies may contain PII/secrets.",
+            description: "Return more of the body (still capped at #{MAX_BODY_CHARS} chars) instead of " \
+                         "a short preview. Off by default because bodies may contain PII/secrets.",
           },
           body_preview_chars: {
             type: "integer",
@@ -135,8 +138,8 @@ module DebugMcp
                     ""
                   end
                   full_len = raw.length
-                  shown = #{include_body} ? raw : raw[0, #{preview_chars}].to_s
-                  shown = shown.gsub(/\\s+/, " ").strip
+                  cap = #{include_body} ? #{MAX_BODY_CHARS} : #{preview_chars}
+                  shown = raw[0, cap].to_s.gsub(/\\s+/, " ").strip
                   atts = (m.attachments || []).map { |a|
                     { filename: a.filename.to_s[0, 200], content_type: a.content_type.to_s[0, 100] }
                   } rescue []
@@ -149,7 +152,7 @@ module DebugMcp
                     subject: m.subject.to_s[0, 500],
                     multipart: (m.multipart? rescue false),
                     body_preview: shown,
-                    body_truncated: (!#{include_body} && full_len > #{preview_chars}),
+                    body_truncated: (full_len > cap),
                     attachments: atts,
                   }
                 end

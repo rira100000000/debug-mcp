@@ -92,7 +92,8 @@ RSpec.describe DebugMcp::Tools::RailsMailDeliveries do
     described_class.call(limit: 3, include_body: true, body_preview_chars: 99, server_context: server_context)
 
     expect(captured).to include("last(3)")
-    expect(captured).to include("true ? raw : raw[0, 99]")
+    # include_body still caps the body (at MAX_BODY_CHARS), never unbounded
+    expect(captured).to include("cap = true ? #{described_class::MAX_BODY_CHARS} : 99")
   end
 
   it "caps preview chars at the maximum" do
@@ -105,7 +106,7 @@ RSpec.describe DebugMcp::Tools::RailsMailDeliveries do
     end
 
     described_class.call(body_preview_chars: 999_999, server_context: server_context)
-    expect(captured).to include("raw[0, #{described_class::MAX_PREVIEW_CHARS}]")
+    expect(captured).to include("cap = false ? #{described_class::MAX_BODY_CHARS} : #{described_class::MAX_PREVIEW_CHARS}")
   end
 
   it "handles a non-Rails process" do
