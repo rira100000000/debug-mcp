@@ -39,6 +39,7 @@ module DebugMcp
       )
 
       DEFAULT_LIMIT = 50
+      MAX_LIMIT = 500
 
       input_schema(
         properties: {
@@ -114,14 +115,15 @@ module DebugMcp
 
         def resolve_limit(limit)
           n = limit.to_i
-          n.positive? ? n : DEFAULT_LIMIT
+          n = DEFAULT_LIMIT unless n.positive?
+          [n, MAX_LIMIT].min
         end
 
         def fetch_events(client, after_seq:, limit:)
           if after_seq
             # Forward cursor paging: oldest-after-cursor first, capped by limit
-            # so a busy buffer never dumps all 1000 events in one response.
-            NotificationsSubscriber.fetch_after_seq(client, after_seq.to_i).first(limit)
+            # (target-side) so a busy buffer never dumps all 1000 events.
+            NotificationsSubscriber.fetch_after_seq(client, after_seq.to_i, limit)
           else
             NotificationsSubscriber.fetch_last(client, limit)
           end
@@ -131,7 +133,9 @@ module DebugMcp
           return events if kinds.nil? || kinds.empty?
 
           matchers = kinds.filter_map { |k| KIND_MATCHERS[k.to_s] }
-          return events if matchers.empty?
+          # All requested kinds were invalid: return nothing rather than silently
+          # falling back to every event (which would expose more, not less).
+          return [] if matchers.empty?
 
           events.select { |e| matchers.any? { |m| m.call(e[:name].to_s) } }
         end

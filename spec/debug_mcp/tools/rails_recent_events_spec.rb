@@ -53,9 +53,9 @@ RSpec.describe DebugMcp::Tools::RailsRecentEvents do
     expect(DebugMcp::NotificationsSubscriber).to have_received(:fetch_last).with(client, described_class::DEFAULT_LIMIT)
   end
 
-  it "uses the seq cursor when after_seq is given" do
-    described_class.call(after_seq: 4, server_context: server_context)
-    expect(DebugMcp::NotificationsSubscriber).to have_received(:fetch_after_seq).with(client, 4)
+  it "uses the seq cursor (with a target-side limit) when after_seq is given" do
+    described_class.call(after_seq: 4, limit: 10, server_context: server_context)
+    expect(DebugMcp::NotificationsSubscriber).to have_received(:fetch_after_seq).with(client, 4, 10)
     expect(DebugMcp::NotificationsSubscriber).not_to have_received(:fetch_last)
   end
 
@@ -97,14 +97,22 @@ RSpec.describe DebugMcp::Tools::RailsRecentEvents do
     expect(text).to include("installed: true")
   end
 
-  it "caps the after_seq cursor result by the requested limit" do
-    many = Array.new(10) { |i| { name: "sql.active_record", seq: i + 1, duration_ms: 1, data: { sql: "S" }, source: "request" } }
-    allow(DebugMcp::NotificationsSubscriber).to receive(:fetch_after_seq).and_return(many)
-    expect(DebugMcp::EventFormatter).to receive(:format) do |events, **_|
-      expect(events.size).to eq(3)
-      "## SQL (3 queries)"
-    end
+  it "passes the requested limit to fetch_after_seq (target-side cap)" do
     described_class.call(after_seq: 0, limit: 3, server_context: server_context)
+    expect(DebugMcp::NotificationsSubscriber).to have_received(:fetch_after_seq).with(client, 0, 3)
+  end
+
+  it "caps the limit at MAX_LIMIT" do
+    described_class.call(limit: 10_000, server_context: server_context)
+    expect(DebugMcp::NotificationsSubscriber).to have_received(:fetch_last).with(client, described_class::MAX_LIMIT)
+  end
+
+  it "returns no events when all requested kinds are invalid (does not fall back to all)" do
+    response = described_class.call(kinds: ["bogus"], server_context: server_context)
+    text = response_text(response)
+    expect(text).to include("no matching events")
+    expect(text).not_to include("## SQL")
+    expect(text).not_to include("## Enqueued Jobs")
   end
 
   it "reports when the subscriber could not be installed" do

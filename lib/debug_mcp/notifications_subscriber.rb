@@ -331,11 +331,14 @@ module DebugMcp
       end
 
       # Fetch events with seq strictly greater than cursor. Clock-independent
-      # cursor pagination — pass the previous response's newest_seq.
-      def fetch_after_seq(client, cursor)
+      # cursor pagination — pass the previous response's newest_seq. An optional
+      # limit caps the result in the TARGET process (oldest-after-cursor first),
+      # so a busy buffer never serializes all 1000 events just to be sliced later.
+      def fetch_after_seq(client, cursor, limit = nil)
+        selector = "::DebugMcpNotificationsBuffer.fetch_after_seq(#{cursor.to_i})"
+        selector += ".first(#{limit.to_i})" if limit
         code = RailsHelper.json_command(
-          "defined?(::DebugMcpNotificationsBuffer) ? " \
-          "::DebugMcpNotificationsBuffer.fetch_after_seq(#{cursor.to_i}).to_json : '[]'",
+          "defined?(::DebugMcpNotificationsBuffer) ? #{selector}.to_json : '[]'",
         )
         RailsHelper.decode_json_result(client.send_command(code), [])
       rescue DebugMcp::Error

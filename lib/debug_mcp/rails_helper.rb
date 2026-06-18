@@ -216,7 +216,9 @@ module DebugMcp
       b64 = output[(first + 1)...last].gsub(/\s/, "")
       return default if b64.empty?
 
-      JSON.parse(Base64.decode64(b64), symbolize_names: true)
+      # strict_decode64 (vs decode64) rejects a truncated/corrupt blob instead of
+      # silently returning partial bytes, so we fall back to `default` cleanly.
+      JSON.parse(Base64.strict_decode64(b64), symbolize_names: true)
     rescue StandardError
       default
     end

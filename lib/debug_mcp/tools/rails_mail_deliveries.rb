@@ -33,6 +33,7 @@ module DebugMcp
       )
 
       DEFAULT_LIMIT = 20
+      MAX_LIMIT = 200
       DEFAULT_PREVIEW_CHARS = 500
       MAX_PREVIEW_CHARS = 5000
       # Hard ceiling applied even when include_body is true, so a multi-megabyte
@@ -97,7 +98,8 @@ module DebugMcp
 
         def resolve_limit(limit)
           n = limit.to_i
-          n.positive? ? n : DEFAULT_LIMIT
+          n = DEFAULT_LIMIT unless n.positive?
+          [n, MAX_LIMIT].min
         end
 
         def resolve_preview(chars)
@@ -130,7 +132,9 @@ module DebugMcp
               if defined?(ActionMailer::Base)
                 dm = ActionMailer::Base.delivery_method
                 deliveries = ActionMailer::Base.deliveries
-                items = deliveries.last(#{limit}).map.with_index do |m, i|
+                shown = deliveries.last(#{limit})
+                offset = deliveries.size - shown.size
+                items = shown.map.with_index do |m, i|
                   raw = begin
                     if m.multipart?
                       part = m.text_part || m.html_part
@@ -148,12 +152,12 @@ module DebugMcp
                     { filename: a.filename.to_s[0, 200], content_type: a.content_type.to_s[0, 100] }
                   } rescue []
                   {
-                    index: i,
+                    index: offset + i,
                     from: Array(m.from).join(", ")[0, 500],
                     to: Array(m.to).join(", ")[0, 1000],
                     cc: Array(m.cc).join(", ")[0, 1000],
                     bcc: Array(m.bcc).join(", ")[0, 1000],
-                    subject: m.subject.to_s[0, 500],
+                    subject: m.subject.to_s.gsub(/\\s+/, " ").strip[0, 500],
                     multipart: (m.multipart? rescue false),
                     body_preview: shown,
                     body_truncated: (full_len > cap),
