@@ -23,6 +23,7 @@ require_relative "tools/disconnect"
 require_relative "tools/rails_info"
 require_relative "tools/rails_routes"
 require_relative "tools/rails_model"
+require_relative "tools/rails_recent_events"
 
 module DebugMcp
   class Server
@@ -62,6 +63,7 @@ module DebugMcp
       Tools::RailsInfo,
       Tools::RailsRoutes,
       Tools::RailsModel,
+      Tools::RailsRecentEvents,
     ].freeze
 
     # All tools (used in tests and for reference)
