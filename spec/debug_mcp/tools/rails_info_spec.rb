@@ -65,6 +65,28 @@ RSpec.describe DebugMcp::Tools::RailsInfo do
       expect(text).to include("rails_routes")
     end
 
+    it "displays the observability section with delivery method, queue adapter and cache store" do
+      stub_app_basics(client)
+      allow(client).to receive(:send_command)
+        .with("p (defined?(ActionMailer::Base) ? ActionMailer::Base.delivery_method : :no_action_mailer)")
+        .and_return("=> :test")
+      allow(client).to receive(:send_command)
+        .with(/queue_adapter_name/)
+        .and_return("=> :inline")
+      allow(client).to receive(:send_command)
+        .with(/Rails\.cache\.class\.name/)
+        .and_return('=> "ActiveSupport::Cache::MemoryStore"')
+
+      response = described_class.call(server_context: server_context)
+      text = response_text(response)
+
+      expect(text).to include("=== Observability ===")
+      expect(text).to include("ActionMailer delivery_method: :test")
+      expect(text).to include("ActiveJob queue_adapter: :inline")
+      expect(text).to include("Cache store: ActiveSupport::Cache::MemoryStore")
+      expect(text).to include("rails_mail_deliveries")
+    end
+
     it "handles non-Rails process" do
       allow(client).to receive(:send_command).with("p defined?(Rails)").and_return("=> nil")
 

@@ -50,6 +50,9 @@ module DebugMcp
           # Route summary
           parts << build_routes_section(client)
 
+          # Runtime observability (delivery method, queue adapter, cache store)
+          parts << build_observability_section(client)
+
           text = parts.compact.join("\n\n")
 
           if text.include?("(unavailable)")
@@ -110,6 +113,23 @@ module DebugMcp
 
         def run_info_script(client, code)
           RailsHelper.run_base64_script(client, code)
+        end
+
+        # Runtime observability: which side effects can be observed in this
+        # process. Trap-safe (uses eval_expr). Values show "(unavailable)" when
+        # they can't be read, which also triggers the trap-context hint.
+        def build_observability_section(client)
+          probe = RailsHelper.observability_probe(client)
+          pid = eval_expr(client, "Process.pid")
+
+          lines = ["=== Observability ==="]
+          lines << "ActionMailer delivery_method: #{probe[:delivery_method]}"
+          lines << "ActiveJob queue_adapter: #{probe[:queue_adapter]}"
+          lines << "Cache store: #{probe[:cache_store]}"
+          lines << "PID: #{pid}" if pid
+          lines << "Note: sent mail is observable via 'rails_mail_deliveries' only when " \
+                   "delivery_method is :test; recent Rails events via 'rails_recent_events'."
+          lines.join("\n")
         end
 
         def eval_expr(client, expr)

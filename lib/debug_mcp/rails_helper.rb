@@ -143,6 +143,32 @@ module DebugMcp
       nil
     end
 
+    # Probe Rails runtime observability settings (trap-safe; uses eval_expr).
+    # Returns a hash of human-readable string values, falling back to
+    # "(unavailable)" when a probe can't be evaluated (e.g. trap context).
+    #
+    # These are plain attribute/class reads (delivery_method, queue adapter
+    # name, cache store class) that do NOT fire ActiveSupport::Notifications
+    # events, so no debug_eval source tagging is needed — consistent with
+    # eval_expr's contract. Shared by rails_info and the mail/recent-events
+    # tools so they report the same observability preconditions.
+    def observability_probe(client)
+      {
+        delivery_method: probe_value(client,
+          "(defined?(ActionMailer::Base) ? ActionMailer::Base.delivery_method : :no_action_mailer)"),
+        queue_adapter: probe_value(client,
+          "(defined?(ActiveJob::Base) ? " \
+          "(ActiveJob::Base.queue_adapter_name rescue ActiveJob::Base.queue_adapter.class.name) : " \
+          ":no_active_job)"),
+        cache_store: probe_value(client,
+          "((defined?(Rails) && Rails.respond_to?(:cache) && Rails.cache) ? Rails.cache.class.name : '(none)')"),
+      }
+    end
+
+    def probe_value(client, expr)
+      eval_expr(client, expr) || "(unavailable)"
+    end
+
     # Get the path to the Rails log file (trap-safe).
     # Returns the absolute path string or nil if not determinable.
     def log_file_path(client)

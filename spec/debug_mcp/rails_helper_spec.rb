@@ -67,4 +67,24 @@ RSpec.describe DebugMcp::RailsHelper do
       expect(described_class.log_file_path(client)).to be_nil
     end
   end
+
+  describe ".observability_probe" do
+    it "returns delivery method, queue adapter and cache store" do
+      allow(client).to receive(:send_command).with(/ActionMailer::Base/).and_return("=> :test")
+      allow(client).to receive(:send_command).with(/queue_adapter_name/).and_return("=> :inline")
+      allow(client).to receive(:send_command).with(/Rails\.cache/).and_return('=> "ActiveSupport::Cache::NullStore"')
+
+      probe = described_class.observability_probe(client)
+      expect(probe[:delivery_method]).to eq(":test")
+      expect(probe[:queue_adapter]).to eq(":inline")
+      expect(probe[:cache_store]).to eq("ActiveSupport::Cache::NullStore")
+    end
+
+    it "falls back to (unavailable) when a probe cannot be evaluated" do
+      allow(client).to receive(:send_command).and_return("=> nil")
+
+      probe = described_class.observability_probe(client)
+      expect(probe.values).to all(eq("(unavailable)"))
+    end
+  end
 end
