@@ -204,15 +204,27 @@ debug-mcp --session-timeout 3600  # 1時間
 | `run_script` | rdbg経由でRubyスクリプトを起動して接続 |
 | `trigger_request` | デバッグ中のRailsアプリにHTTPリクエストを送信 |
 
-### Railsツール（自動検出）
+### Railsツール
 
-Railsプロセスを検出すると自動的に登録されます。
+常時登録されますが、Railsプロセスへの接続が必要で、プレーンなRubyスクリプトに対してはエラーを返します。
 
 | ツール | 説明 |
 |------|------|
-| `rails_info` | アプリ名・Rails/Rubyバージョン・環境・ルートパスを表示 |
+| `rails_info` | アプリ名・Rails/Rubyバージョン・環境・ルートパス・DB設定に加え、**Observability** セクション（delivery method・queue adapter・cache store・PID）を表示 |
 | `rails_routes` | ルーティング一覧（verb, path, controller#action）、コントローラ・パスでフィルタ可能 |
 | `rails_model` | モデル構造：カラム・アソシエーション・バリデーション・enum・スコープを表示 |
+| `rails_recent_events` | `trigger_request` を介さず、実行中プロセスの直近Railsイベント（SQL/render/cache/job/request）を表示 |
+| `rails_mail_deliveries` | `ActionMailer::Base.deliveries` のメール（from/to/件名/本文プレビュー/添付名）を表示 |
+
+### リクエストの外側での実行時観測
+
+次の3ツールで、AIはログを読まずに副作用を確認できます。
+
+- **`rails_info`** は観測の前提条件を報告します。たとえば `delivery_method` が `:test` か（メールを観測できるか）、どの `queue_adapter` を使っているか。AIは「何が見えて何が見えないか」を最初に把握できます。
+- **`rails_recent_events`** は `trigger_request` と同じ `ActiveSupport::Notifications` バッファを、リクエストとは独立に読み出します。**forward-only**（最初の呼び出しでsubscriberをinstallし、それ以降のイベントのみ可視）かつ **paused-only**（対象プロセスがdebuggerプロンプトで停止している必要あり）です。応答には毎回ヘッダ（`installed_at`・`forward_only`・`events_before_install_are_unavailable`・buffer件数/drop件数・`seq` 範囲）が付き、空の結果を「何も起きなかった」と誤解しないようにしています。`after_seq` カーソルで前方ページング可能（時計に非依存）。subscriber注入はプロセス内instrumentationの副作用なので、厳密にはread-onlyではありません。
+- **`rails_mail_deliveries`** は `ActionMailer::Base.deliveries` を構造化します。`delivery_method` が `:test` のときだけ中身が入るため、それ以外では「観測不能」と明示し、空＝未送信ではないことを示します。本文はデフォルトでプレビューに切り詰め（PII対策）、添付の中身は返しません。
+
+> 未提供: 専用の `rails_jobs`（queueスナップショット）ツール。ActiveJobのenqueueは既に `enqueue.active_job` として `rails_recent_events` / `trigger_request` に現れます。TestAdapterの `enqueued_jobs`/`performed_jobs` スナップショットは今後の課題です。
 
 ## Rails イベントキャプチャ
 

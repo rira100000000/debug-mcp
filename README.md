@@ -205,15 +205,27 @@ The session manager also detects and cleans up sessions whose target process has
 | `run_script` | Start a Ruby script under rdbg and connect to it |
 | `trigger_request` | Send an HTTP request to a Rails app under debug |
 
-### Rails Tools (auto-detected)
+### Rails Tools
 
-These tools are automatically registered when a Rails process is detected.
+These tools are always registered, but they require a connected Rails process and return an error when used against a plain Ruby script.
 
 | Tool | Description |
 |------|-------------|
-| `rails_info` | Show app name, Rails/Ruby versions, environment, root path |
+| `rails_info` | Show app name, Rails/Ruby versions, environment, root path, DB config, and an **Observability** section (delivery method, queue adapter, cache store, PID) |
 | `rails_routes` | Show routes (verb, path, controller#action), filterable by controller or path |
 | `rails_model` | Show model structure: columns, associations, validations, enums, scopes |
+| `rails_recent_events` | Show recent Rails internal events (SQL/render/cache/job/request) from the running process, without `trigger_request` |
+| `rails_mail_deliveries` | Show emails in `ActionMailer::Base.deliveries` (from/to/subject/body preview/attachment names) |
+
+### Runtime observability beyond a single request
+
+Three of the Rails tools let an agent confirm side effects without reading logs:
+
+- **`rails_info`** reports the observability *preconditions* — e.g. whether `delivery_method` is `:test` (so mail is observable) and which `queue_adapter` is in use — so the agent knows up front what it can and cannot see.
+- **`rails_recent_events`** reads the same `ActiveSupport::Notifications` buffer used by `trigger_request`, but independent of a request. It is **forward-only** (the first call installs the subscriber; only events fired afterwards are visible) and **paused-only** (the process must be stopped at a debugger prompt). Every response includes a header — `installed_at`, `forward_only`, `events_before_install_are_unavailable`, buffer size/dropped count, and the `seq` range — so an empty result is never mistaken for "nothing happened". Page forward with the `after_seq` cursor (clock-independent). Installing the subscriber is an in-process instrumentation side effect, so this tool is not strictly read-only.
+- **`rails_mail_deliveries`** structures `ActionMailer::Base.deliveries`. It is only populated when `delivery_method` is `:test`; otherwise the response says so, so an empty list does not imply no mail was sent. Bodies are truncated to a preview (PII-safe by default) and attachment content is never returned.
+
+> Not yet included: a dedicated `rails_jobs` queue-snapshot tool. ActiveJob enqueues already appear in `rails_recent_events` / `trigger_request` via `enqueue.active_job`; a TestAdapter `enqueued_jobs`/`performed_jobs` snapshot is planned as a follow-up.
 
 ## Rails event capture
 

@@ -1,5 +1,45 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- **`rails_recent_events` tool** — Read recent Rails internal events (SQL, renders,
+  cache, job enqueues, request lifecycle) from the running process without
+  `trigger_request`. Forward-only (the first call installs the subscriber) and
+  paused-only; every response carries an observability header (`installed_at`,
+  `forward_only`, `events_before_install_are_unavailable`, buffer size + dropped
+  count, `seq` range) so an empty result is never mistaken for "nothing happened".
+  Clock-independent `after_seq` cursor paging.
+
+- **`rails_mail_deliveries` tool** — Structure `ActionMailer::Base.deliveries`
+  (from/to/cc/bcc/subject/body preview/attachment names). `observable` is true only
+  when `delivery_method` is `:test`; otherwise the response states that an empty list
+  is not proof no mail was sent. Bodies are truncated to a preview inside the target
+  process (transport-safe, PII-safe by default); attachment content is never returned.
+
+- **`rails_info` Observability section** — `rails_info` now reports `delivery_method`,
+  ActiveJob `queue_adapter`, cache store, and PID, so an agent can tell up front
+  whether mail/jobs are observable in this process.
+
+### Bug Fixes
+
+- **NotificationsSubscriber lifecycle (machine-verified)** — The injected buffer
+  module now separates definition from activation: `.install` is always called and is
+  idempotent, so a module left with zero subscriptions (e.g. an install attempt that
+  raised in signal trap context, where `ActiveSupport::Notifications.subscribe` takes
+  an internal mutex) recovers on the next injection instead of being permanently
+  poisoned. `install` refuses early in trap context. The injected module is versioned
+  so an older one in a long-running process is replaced. Reads use `Mutex#try_lock`
+  with a lockless fallback so a fetch can't deadlock against a debugger-stopped thread.
+  Per-event monotonic `seq` with clock-independent `fetch_last` / `fetch_after_seq`.
+  SQL bodies and request paths are truncated at save time.
+
+### Documentation
+
+- Corrected docs that claimed Rails tools are registered only when a Rails process is
+  detected — they are always registered and guard themselves via `require_rails!`.
+
 ## 0.2.1 — 2026-06-17
 
 ### Bug Fixes
