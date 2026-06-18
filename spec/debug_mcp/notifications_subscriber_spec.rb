@@ -43,10 +43,10 @@ RSpec.describe DebugMcp::NotificationsSubscriber do
   end
 
   describe ".fetch_last" do
-    it "requests the last n events and parses the JSON response" do
+    it "requests the last n events and decodes the response" do
       allow(client).to receive(:send_command) do |cmd|
         expect(cmd).to include("fetch_last(5)")
-        '[{"name":"sql.active_record","seq":2}]'
+        debug_eval_json([{ name: "sql.active_record", seq: 2 }])
       end
       result = described_class.fetch_last(client, 5)
       expect(result.size).to eq(1)
@@ -69,10 +69,10 @@ RSpec.describe DebugMcp::NotificationsSubscriber do
   end
 
   describe ".fetch_after_seq" do
-    it "requests events after the cursor and parses the response" do
+    it "requests events after the cursor and decodes the response" do
       allow(client).to receive(:send_command) do |cmd|
         expect(cmd).to include("fetch_after_seq(7)")
-        '[{"name":"enqueue.active_job","seq":8}]'
+        debug_eval_json([{ name: "enqueue.active_job", seq: 8 }])
       end
       result = described_class.fetch_after_seq(client, 7)
       expect(result.first[:seq]).to eq(8)
@@ -89,16 +89,16 @@ RSpec.describe DebugMcp::NotificationsSubscriber do
   end
 
   describe ".metadata" do
-    it "parses a JSON object response into a symbolized hash" do
-      json = '{"version":"2","installed":true,"dropped_count":0,"newest_seq":5}'
-      allow(client).to receive(:send_command).and_return("=> nil\n#{json}\n")
+    it "decodes a base64 JSON object response into a symbolized hash" do
+      meta_obj = { version: "2", installed: true, dropped_count: 0, newest_seq: 5 }
+      allow(client).to receive(:send_command).and_return(debug_eval_json(meta_obj))
       meta = described_class.metadata(client)
       expect(meta[:version]).to eq("2")
       expect(meta[:installed]).to be true
       expect(meta[:newest_seq]).to eq(5)
     end
 
-    it "returns empty hash when no JSON object line is present" do
+    it "returns empty hash when no base64 result is present" do
       allow(client).to receive(:send_command).and_return("=> nil\n")
       expect(described_class.metadata(client)).to eq({})
     end
@@ -115,9 +115,10 @@ RSpec.describe DebugMcp::NotificationsSubscriber do
       expect(described_class.fetch_by_request_id(client, nil)).to eq([])
     end
 
-    it "parses a JSON array response into symbolized hashes" do
-      json_line = '[{"name":"sql.active_record","timestamp":1.0,"duration_ms":2.5,"request_id":"abc","data":{"sql":"SELECT 1"}}]'
-      allow(client).to receive(:send_command).and_return("=> nil\n#{json_line}\n")
+    it "decodes a base64 JSON array response into symbolized hashes" do
+      events = [{ name: "sql.active_record", timestamp: 1.0, duration_ms: 2.5,
+                  request_id: "abc", data: { sql: "SELECT 1" } }]
+      allow(client).to receive(:send_command).and_return(debug_eval_json(events))
       result = described_class.fetch_by_request_id(client, "abc")
       expect(result).to be_an(Array)
       expect(result.size).to eq(1)
@@ -125,13 +126,13 @@ RSpec.describe DebugMcp::NotificationsSubscriber do
       expect(result.first[:data][:sql]).to eq("SELECT 1")
     end
 
-    it "returns empty array when no JSON line is present" do
+    it "returns empty array when no base64 result is present" do
       allow(client).to receive(:send_command).and_return("=> nil\n")
       expect(described_class.fetch_by_request_id(client, "abc")).to eq([])
     end
 
-    it "returns empty array when response is malformed JSON" do
-      allow(client).to receive(:send_command).and_return("[not valid json]\n")
+    it "returns empty array when the response is malformed" do
+      allow(client).to receive(:send_command).and_return("=> \"not base64 json\"\n")
       expect(described_class.fetch_by_request_id(client, "abc")).to eq([])
     end
 
@@ -142,10 +143,10 @@ RSpec.describe DebugMcp::NotificationsSubscriber do
   end
 
   describe ".fetch_since" do
-    it "sends timestamp as float and parses the JSON response" do
+    it "sends timestamp as float and decodes the response" do
       allow(client).to receive(:send_command) do |cmd|
         expect(cmd).to include("123.45")
-        '[{"name":"render_template.action_view"}]'
+        debug_eval_json([{ name: "render_template.action_view" }])
       end
       result = described_class.fetch_since(client, 123.45)
       expect(result.size).to eq(1)

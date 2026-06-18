@@ -5,14 +5,16 @@ RSpec.describe DebugMcp::Tools::RailsMailDeliveries do
   let(:manager) { build_mock_manager(client: client) }
   let(:server_context) { { session_manager: manager } }
 
-  def stub_deliveries(json)
+  # The tool transports its result as a base64 JSON blob on the `=> ` line.
+  def stub_deliveries(obj)
     allow(DebugMcp::RailsHelper).to receive(:require_rails!).with(client)
     allow(DebugMcp::RailsHelper).to receive(:trap_context?).with(client).and_return(false)
-    allow(client).to receive(:send_command).with(kind_of(String), timeout: 15).and_return(json)
+    allow(client).to receive(:send_command).with(kind_of(String), timeout: 15)
+      .and_return(debug_eval_json(obj))
   end
 
   it "formats observable test deliveries with previews and attachment names" do
-    json = {
+    stub_deliveries(
       observable: true, delivery_method: "test", total: 1,
       deliveries: [{
         index: 0, from: "a@x.com", to: "b@y.com", cc: "", bcc: "",
@@ -20,8 +22,7 @@ RSpec.describe DebugMcp::Tools::RailsMailDeliveries do
         body_truncated: false,
         attachments: [{ filename: "invoice.pdf", content_type: "application/pdf" }],
       }],
-    }.to_json
-    stub_deliveries("=> nil\n#{json}\n")
+    )
 
     text = response_text(described_class.call(server_context: server_context))
 
@@ -35,8 +36,7 @@ RSpec.describe DebugMcp::Tools::RailsMailDeliveries do
   end
 
   it "warns that an empty list is not proof when not observable" do
-    json = { observable: false, delivery_method: "smtp", total: 0, deliveries: [] }.to_json
-    stub_deliveries(json)
+    stub_deliveries(observable: false, delivery_method: "smtp", total: 0, deliveries: [])
 
     text = response_text(described_class.call(server_context: server_context))
 
@@ -46,27 +46,24 @@ RSpec.describe DebugMcp::Tools::RailsMailDeliveries do
   end
 
   it "marks truncated bodies" do
-    json = {
+    stub_deliveries(
       observable: true, delivery_method: "test", total: 1,
       deliveries: [{ index: 0, from: "a", to: "b", cc: "", bcc: "", subject: "S",
                      multipart: true, body_preview: "partial", body_truncated: true, attachments: [] }],
-    }.to_json
-    stub_deliveries(json)
+    )
 
     expect(response_text(described_class.call(server_context: server_context))).to include("body: partial [truncated]")
   end
 
   it "reports when ActionMailer is not loaded" do
-    json = { observable: false, delivery_method: "(ActionMailer not loaded)", total: 0, deliveries: [] }.to_json
-    stub_deliveries(json)
+    stub_deliveries(observable: false, delivery_method: "(ActionMailer not loaded)", total: 0, deliveries: [])
 
     text = response_text(described_class.call(server_context: server_context))
     expect(text).to include("(ActionMailer not loaded)")
   end
 
   it "surfaces a script error" do
-    json = { error: "NoMethodError: boom" }.to_json
-    stub_deliveries(json)
+    stub_deliveries(error: "NoMethodError: boom")
 
     expect(response_text(described_class.call(server_context: server_context))).to include("Error: NoMethodError: boom")
   end

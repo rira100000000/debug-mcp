@@ -296,10 +296,11 @@ module DebugMcp
       def fetch_by_request_id(client, request_id)
         return [] unless request_id
 
-        code = "puts(defined?(::DebugMcpNotificationsBuffer) ? " \
-               "::DebugMcpNotificationsBuffer.fetch_by_request_id(#{request_id.inspect}).to_json : '[]')"
-        result = client.send_command(code)
-        RailsHelper.parse_json_array(result)
+        code = RailsHelper.json_command(
+          "defined?(::DebugMcpNotificationsBuffer) ? " \
+          "::DebugMcpNotificationsBuffer.fetch_by_request_id(#{request_id.inspect}).to_json : '[]'",
+        )
+        RailsHelper.decode_json_result(client.send_command(code), [])
       rescue DebugMcp::Error
         []
       end
@@ -309,20 +310,22 @@ module DebugMcp
       # this compares against a client-supplied timestamp and is sensitive to
       # clock skew between the MCP host and the target process.
       def fetch_since(client, timestamp)
-        code = "puts(defined?(::DebugMcpNotificationsBuffer) ? " \
-               "::DebugMcpNotificationsBuffer.fetch_since(#{timestamp.to_f}).to_json : '[]')"
-        result = client.send_command(code)
-        RailsHelper.parse_json_array(result)
+        code = RailsHelper.json_command(
+          "defined?(::DebugMcpNotificationsBuffer) ? " \
+          "::DebugMcpNotificationsBuffer.fetch_since(#{timestamp.to_f}).to_json : '[]'",
+        )
+        RailsHelper.decode_json_result(client.send_command(code), [])
       rescue DebugMcp::Error
         []
       end
 
       # Fetch the last n buffered events. Clock-independent.
       def fetch_last(client, n)
-        code = "puts(defined?(::DebugMcpNotificationsBuffer) ? " \
-               "::DebugMcpNotificationsBuffer.fetch_last(#{n.to_i}).to_json : '[]')"
-        result = client.send_command(code)
-        RailsHelper.parse_json_array(result)
+        code = RailsHelper.json_command(
+          "defined?(::DebugMcpNotificationsBuffer) ? " \
+          "::DebugMcpNotificationsBuffer.fetch_last(#{n.to_i}).to_json : '[]'",
+        )
+        RailsHelper.decode_json_result(client.send_command(code), [])
       rescue DebugMcp::Error
         []
       end
@@ -330,10 +333,11 @@ module DebugMcp
       # Fetch events with seq strictly greater than cursor. Clock-independent
       # cursor pagination — pass the previous response's newest_seq.
       def fetch_after_seq(client, cursor)
-        code = "puts(defined?(::DebugMcpNotificationsBuffer) ? " \
-               "::DebugMcpNotificationsBuffer.fetch_after_seq(#{cursor.to_i}).to_json : '[]')"
-        result = client.send_command(code)
-        RailsHelper.parse_json_array(result)
+        code = RailsHelper.json_command(
+          "defined?(::DebugMcpNotificationsBuffer) ? " \
+          "::DebugMcpNotificationsBuffer.fetch_after_seq(#{cursor.to_i}).to_json : '[]'",
+        )
+        RailsHelper.decode_json_result(client.send_command(code), [])
       rescue DebugMcp::Error
         []
       end
@@ -341,10 +345,10 @@ module DebugMcp
       # Fetch subscriber metadata (version, installed_at, buffer_size,
       # dropped_count, seq cursors, ...). Returns {} if not installed.
       def metadata(client)
-        code = "puts(defined?(::DebugMcpNotificationsBuffer) ? " \
-               "::DebugMcpNotificationsBuffer.metadata.to_json : '{}')"
-        result = client.send_command(code)
-        RailsHelper.parse_json_object(result)
+        code = RailsHelper.json_command(
+          "defined?(::DebugMcpNotificationsBuffer) ? ::DebugMcpNotificationsBuffer.metadata.to_json : '{}'",
+        )
+        RailsHelper.decode_json_result(client.send_command(code), {})
       rescue DebugMcp::Error
         {}
       end

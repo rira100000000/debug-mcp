@@ -89,3 +89,14 @@ end
 def response_text(response)
   response.content.first[:text]
 end
+
+# Build a debug-gem `=> "<base64>"` response line for a value that the target
+# returned as `[obj.to_json].pack("m0")` (see RailsHelper.json_command). This is
+# how Rails observability tools transport JSON, since the debug socket does not
+# forward the debuggee's stdout.
+def debug_eval_json(obj)
+  require "base64"
+  require "json"
+  b64 = [obj.to_json].pack("m0") # base64 alphabet only — no inspect escaping needed
+  "=> \"#{b64}\""
+end

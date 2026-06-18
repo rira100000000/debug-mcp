@@ -112,17 +112,21 @@ module DebugMcp
           encoded = Base64.strict_encode64(script)
           cmd = "require 'base64'; eval(::Base64.decode64('#{encoded}').force_encoding('UTF-8'))"
           result = client.send_command(cmd, timeout: 15)
-          RailsHelper.parse_json_object(result)
+          # The script's value is a base64 JSON blob (see build_script) — the
+          # debug socket does not forward the debuggee's stdout, so we return the
+          # data as the evaluated expression's value, not via puts.
+          RailsHelper.decode_json_result(result, nil)
         rescue DebugMcp::Error
           nil
         end
 
         # Runs inside the target process. Truncates the body and strips newlines
-        # there (not in the MCP layer) so the result is a single transport-safe
-        # JSON line and large bodies never cross the socket.
+        # there (not in the MCP layer) so the result stays small, and returns the
+        # JSON base64-encoded as the script's value (send_command only sees the
+        # evaluated value, not puts output).
         def build_script(limit:, include_body:, preview_chars:)
           <<~RUBY
-            begin
+            __result = begin
               if defined?(ActionMailer::Base)
                 dm = ActionMailer::Base.delivery_method
                 deliveries = ActionMailer::Base.deliveries
@@ -156,15 +160,16 @@ module DebugMcp
                     attachments: atts,
                   }
                 end
-                puts({ observable: (dm == :test), delivery_method: dm.to_s,
-                       total: deliveries.size, deliveries: items }.to_json)
+                { observable: (dm == :test), delivery_method: dm.to_s,
+                  total: deliveries.size, deliveries: items }.to_json
               else
-                puts({ observable: false, delivery_method: "(ActionMailer not loaded)",
-                       total: 0, deliveries: [] }.to_json)
+                { observable: false, delivery_method: "(ActionMailer not loaded)",
+                  total: 0, deliveries: [] }.to_json
               end
             rescue => e
-              puts({ error: e.class.to_s + ": " + e.message }.to_json)
+              { error: e.class.to_s + ": " + e.message }.to_json
             end
+            [__result].pack("m0")
           RUBY
         end
 

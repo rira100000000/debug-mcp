@@ -182,32 +182,43 @@ module DebugMcp
       nil
     end
 
-    # Parse a single-line JSON array out of debug-gem output (which may contain
-    # `=> nil` lines, `puts` echoes, etc.). Returns the first line that parses to
-    # an Array, or [] if none. The debug socket is line-oriented, so values are
-    # emitted as one JSON line.
-    def parse_json_array(text)
-      parse_json_line(text, "[", Array) || []
+    # Wrap a target-side expression that evaluates to a JSON STRING so its value
+    # comes back as a base64 blob on the debug gem's `=> <result>` line.
+    #
+    # Why base64: send_command only returns the evaluated expression's inspected
+    # value; the debuggee's own stdout (anything printed with puts/p) is NOT
+    # forwarded over the debug socket. So we cannot rely on `puts(x.to_json)`
+    # emitting a parseable line — its output goes to the target's stdout and
+    # send_command just sees `=> nil`. Returning the JSON directly would work but
+    # then it is wrapped in Ruby string-inspect escaping (\" , \\ , \n) that is
+    # fragile to undo. Base64's alphabet contains none of those, so it round-trips
+    # through inspect/quoting untouched.
+    def json_command(json_string_expr)
+      "[(#{json_string_expr})].pack(\"m0\")"
     end
 
-    # Like parse_json_array but for a JSON object. Returns {} if none parses.
-    def parse_json_object(text)
-      parse_json_line(text, "{", Hash) || {}
-    end
+    # Decode the result of a json_command from send_command output. The debug gem
+    # echoes the evaluated value as a quoted string, e.g. `"<base64>"` (sometimes
+    # with a `=> ` prefix, and — for long values — WRAPPED across several lines at
+    # the debugger's width, which read_until_input joins with newlines).
+    #
+    # The value is a base64 blob, whose alphabet contains no `"`, so we take
+    # everything between the first and last double-quote and strip whitespace
+    # (Base64.decode64 also ignores embedded newlines). Returns `default` on any
+    # failure (not installed, parse error, timeout-truncated output, ...).
+    def decode_json_result(output, default)
+      return default unless output
 
-    def parse_json_line(text, prefix, klass)
-      return nil unless text
-      text.each_line do |line|
-        stripped = line.strip
-        next unless stripped.start_with?(prefix)
-        begin
-          parsed = JSON.parse(stripped, symbolize_names: true)
-          return parsed if parsed.is_a?(klass)
-        rescue JSON::ParserError
-          next
-        end
-      end
-      nil
+      first = output.index('"')
+      last = output.rindex('"')
+      return default unless first && last && last > first
+
+      b64 = output[(first + 1)...last].gsub(/\s/, "")
+      return default if b64.empty?
+
+      JSON.parse(Base64.decode64(b64), symbolize_names: true)
+    rescue StandardError
+      default
     end
 
     TRAP_CONTEXT_HINT = "Note: The process may be in signal trap context (common with Puma). " \
