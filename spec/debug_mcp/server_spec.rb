@@ -39,8 +39,9 @@ RSpec.describe DebugMcp::Server do
       expect(DebugMcp::Server::INSTRUCTIONS).to include("debug gem")
     end
 
-    it "mentions dynamic Rails tool registration in instructions" do
-      expect(DebugMcp::Server::INSTRUCTIONS).to include("Rails-specific tools become available")
+    it "documents that Rails tools require a connected Rails process" do
+      expect(DebugMcp::Server::INSTRUCTIONS).to include("Rails-specific tools")
+      expect(DebugMcp::Server::INSTRUCTIONS).to include("require a connected Rails process")
     end
   end
 

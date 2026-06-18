@@ -53,7 +53,11 @@ module DebugMcp
       Tools::TriggerRequest,
     ].freeze
 
-    # Rails tools: dynamically added when a Rails process is detected
+    # Rails tools: always registered (see TOOLS below). They require a connected
+    # Rails process and guard themselves via RailsHelper.require_rails!, returning
+    # an error on plain Ruby targets. register_rails_tools exists for hosts that
+    # want to add them to a pre-built server, but the default server registers
+    # them up front.
     RAILS_TOOLS = [
       Tools::RailsInfo,
       Tools::RailsRoutes,
@@ -116,9 +120,9 @@ module DebugMcp
       trigger_request handles resuming the process automatically.
 
       Rails debugging:
-      When you connect to a Rails process, additional Rails-specific tools become available \
-      automatically (rails_info, rails_routes, rails_model). These tools are NOT shown \
-      when debugging plain Ruby scripts.
+      Rails-specific tools (rails_info, rails_routes, rails_model) are always available, \
+      but they require a connected Rails process and will return an error when used \
+      against a plain Ruby script.
 
       Rails debugging workflow:
       1. Start the Rails server with debugging: RUBY_DEBUG_OPEN=true bin/rails server
