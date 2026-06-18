@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — 2026-06-18
 
 ### Features
 
@@ -34,6 +34,13 @@
   with a lockless fallback so a fetch can't deadlock against a debugger-stopped thread.
   Per-event monotonic `seq` with clock-independent `fetch_last` / `fetch_after_seq`.
   SQL bodies and request paths are truncated at save time.
+
+- **Notifications event capture over the debug socket** — Results are now
+  returned as the evaluated expression's value (base64-encoded JSON) instead of
+  via `puts`. End-to-end testing against a live rdbg-attached process showed the
+  debug socket does not forward the debuggee's stdout, so the previous
+  `puts(x.to_json)` path returned nothing — this also fixes `trigger_request`'s
+  `Rails Events` section, which used the same mechanism.
 
 ### Documentation
 
