@@ -51,4 +51,9 @@ Rails.application.configure do
 
   # Raise error when a before_action's only/except options reference missing actions.
   config.action_controller.raise_on_missing_callback_actions = true
+
+  # Keep sent mail observable when attaching with debug-mcp in development:
+  # :test stores messages in ActionMailer::Base.deliveries instead of sending.
+  config.action_mailer.delivery_method = :test
+  config.action_mailer.perform_deliveries = true
 end

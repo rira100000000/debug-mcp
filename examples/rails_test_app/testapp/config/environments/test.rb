@@ -39,4 +39,11 @@ Rails.application.configure do
 
   # Raise error when a before_action's only/except options reference missing actions.
   config.action_controller.raise_on_missing_callback_actions = true
+
+  # Make mail and jobs observable via debug-mcp (rails_mail_deliveries /
+  # rails_recent_events / rails_jobs):
+  #   :test delivery_method populates ActionMailer::Base.deliveries
+  #   :test queue_adapter records enqueued_jobs / performed_jobs
+  config.action_mailer.delivery_method = :test
+  config.active_job.queue_adapter = :test
 end
