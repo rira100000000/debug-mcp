@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "base64"
+require "json"
 require_relative "source_tagging"
 
 module DebugMcp
@@ -178,6 +179,34 @@ module DebugMcp
 
       "#{root}/log/#{env}.log"
     rescue DebugMcp::Error
+      nil
+    end
+
+    # Parse a single-line JSON array out of debug-gem output (which may contain
+    # `=> nil` lines, `puts` echoes, etc.). Returns the first line that parses to
+    # an Array, or [] if none. The debug socket is line-oriented, so values are
+    # emitted as one JSON line.
+    def parse_json_array(text)
+      parse_json_line(text, "[", Array) || []
+    end
+
+    # Like parse_json_array but for a JSON object. Returns {} if none parses.
+    def parse_json_object(text)
+      parse_json_line(text, "{", Hash) || {}
+    end
+
+    def parse_json_line(text, prefix, klass)
+      return nil unless text
+      text.each_line do |line|
+        stripped = line.strip
+        next unless stripped.start_with?(prefix)
+        begin
+          parsed = JSON.parse(stripped, symbolize_names: true)
+          return parsed if parsed.is_a?(klass)
+        rescue JSON::ParserError
+          next
+        end
+      end
       nil
     end
 

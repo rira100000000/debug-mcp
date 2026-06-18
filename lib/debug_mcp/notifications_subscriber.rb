@@ -299,7 +299,7 @@ module DebugMcp
         code = "puts(defined?(::DebugMcpNotificationsBuffer) ? " \
                "::DebugMcpNotificationsBuffer.fetch_by_request_id(#{request_id.inspect}).to_json : '[]')"
         result = client.send_command(code)
-        parse_json_array(result)
+        RailsHelper.parse_json_array(result)
       rescue DebugMcp::Error
         []
       end
@@ -312,7 +312,7 @@ module DebugMcp
         code = "puts(defined?(::DebugMcpNotificationsBuffer) ? " \
                "::DebugMcpNotificationsBuffer.fetch_since(#{timestamp.to_f}).to_json : '[]')"
         result = client.send_command(code)
-        parse_json_array(result)
+        RailsHelper.parse_json_array(result)
       rescue DebugMcp::Error
         []
       end
@@ -322,7 +322,7 @@ module DebugMcp
         code = "puts(defined?(::DebugMcpNotificationsBuffer) ? " \
                "::DebugMcpNotificationsBuffer.fetch_last(#{n.to_i}).to_json : '[]')"
         result = client.send_command(code)
-        parse_json_array(result)
+        RailsHelper.parse_json_array(result)
       rescue DebugMcp::Error
         []
       end
@@ -333,7 +333,7 @@ module DebugMcp
         code = "puts(defined?(::DebugMcpNotificationsBuffer) ? " \
                "::DebugMcpNotificationsBuffer.fetch_after_seq(#{cursor.to_i}).to_json : '[]')"
         result = client.send_command(code)
-        parse_json_array(result)
+        RailsHelper.parse_json_array(result)
       rescue DebugMcp::Error
         []
       end
@@ -344,40 +344,8 @@ module DebugMcp
         code = "puts(defined?(::DebugMcpNotificationsBuffer) ? " \
                "::DebugMcpNotificationsBuffer.metadata.to_json : '{}')"
         result = client.send_command(code)
-        parse_json_object(result)
+        RailsHelper.parse_json_object(result)
       rescue DebugMcp::Error
-        {}
-      end
-
-      private
-
-      def parse_json_array(text)
-        return [] unless text
-        text.each_line do |line|
-          stripped = line.strip
-          next unless stripped.start_with?("[")
-          begin
-            parsed = JSON.parse(stripped, symbolize_names: true)
-            return parsed if parsed.is_a?(Array)
-          rescue JSON::ParserError
-            next
-          end
-        end
-        []
-      end
-
-      def parse_json_object(text)
-        return {} unless text
-        text.each_line do |line|
-          stripped = line.strip
-          next unless stripped.start_with?("{")
-          begin
-            parsed = JSON.parse(stripped, symbolize_names: true)
-            return parsed if parsed.is_a?(Hash)
-          rescue JSON::ParserError
-            next
-          end
-        end
         {}
       end
     end

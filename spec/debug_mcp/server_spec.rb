@@ -7,13 +7,13 @@ RSpec.describe DebugMcp::Server do
       expect(DebugMcp::Server::BASE_TOOLS.size).to eq(19)
     end
 
-    it "has RAILS_TOOLS with 4 tools" do
+    it "has RAILS_TOOLS with 5 tools" do
       expect(DebugMcp::Server::RAILS_TOOLS).to be_a(Array)
-      expect(DebugMcp::Server::RAILS_TOOLS.size).to eq(4)
+      expect(DebugMcp::Server::RAILS_TOOLS.size).to eq(5)
     end
 
-    it "has TOOLS combining both sets (23 total)" do
-      expect(DebugMcp::Server::TOOLS.size).to eq(23)
+    it "has TOOLS combining both sets (24 total)" do
+      expect(DebugMcp::Server::TOOLS.size).to eq(24)
       expect(DebugMcp::Server::TOOLS).to eq(
         DebugMcp::Server::BASE_TOOLS + DebugMcp::Server::RAILS_TOOLS
       )
@@ -59,7 +59,7 @@ RSpec.describe DebugMcp::Server do
       DebugMcp::Server.register_rails_tools(mcp_server)
 
       tools_after = mcp_server.instance_variable_get(:@tools).size
-      expect(tools_after).to eq(tools_before + 4)
+      expect(tools_after).to eq(tools_before + 5)
       expect(mcp_server).to have_received(:notify_tools_list_changed)
     end
 
