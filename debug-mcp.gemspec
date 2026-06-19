@@ -24,7 +24,9 @@ Gem::Specification.new do |spec|
   spec.files = Dir.chdir(__dir__) do
     `git ls-files -z`.split("\x0").reject do |f|
       (File.expand_path(f) == gemspec_file) ||
-        f.start_with?(*%w[bin/ test/ spec/ features/ .git .github appveyor Gemfile])
+        f.start_with?(*%w[bin/ test/ spec/ features/ examples/ .git .github appveyor Gemfile]) ||
+        # Internal planning docs — not shipped to gem consumers.
+        f == "RAILS_RUNTIME_OBSERVABILITY_PLAN.md"
     end
   end
   spec.bindir = "exe"
@@ -36,7 +38,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency "mcp", "~> 0.7"
   spec.add_dependency "webrick", "~> 1.9"
 
-  spec.add_development_dependency "activesupport", ">= 7.0"
+  spec.add_development_dependency "activesupport", ">= 7.0", "< 9.0"
   spec.add_development_dependency "rake", "~> 13.0"
   spec.add_development_dependency "rspec", "~> 3.0"
 end
