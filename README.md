@@ -148,6 +148,12 @@ debug-mcp
 
 For browser-based clients or other HTTP-compatible MCP clients.
 
+The HTTP transport requires the `rack` gem, which is not installed with debug-mcp (STDIO users don't need it):
+
+```bash
+gem install rack
+```
+
 ```bash
 debug-mcp --transport http --port 8080
 ```

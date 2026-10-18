@@ -102,14 +102,27 @@ RSpec.describe DebugMcp::Server do
     end
   end
 
-  describe DebugMcp::Server::RackRequestAdapter do
-    it "wraps env and exposes body" do
-      input = StringIO.new('{"key": "value"}')
-      env = { "rack.input" => input, "REQUEST_METHOD" => "POST" }
-      adapter = DebugMcp::Server::RackRequestAdapter.new(env)
+  describe "#build_rack_env" do
+    it "builds an env that Rack::Request can read the body and content length from" do
+      require "rack"
+      body = '{"key": "値"}'
+      req = double(
+        request_method: "POST",
+        path: "/mcp",
+        query_string: nil,
+        body: body,
+        header: { "mcp-session-id" => ["abc"] },
+        content_type: "application/json",
+      )
+      allow(req).to receive(:[]) { |name| { "Mcp-Session-Id" => "abc" }[name] }
 
-      expect(adapter.env).to eq(env)
-      expect(adapter.body).to eq(input)
+      server = DebugMcp::Server.new(transport: "http", port: 8080, host: "127.0.0.1")
+      request = Rack::Request.new(server.send(:build_rack_env, req))
+
+      expect(request.request_method).to eq("POST")
+      expect(request.content_length).to eq(body.bytesize.to_s)
+      expect(request.body.read).to eq(body)
+      expect(request.env["HTTP_MCP_SESSION_ID"]).to eq("abc")
     end
   end
 end

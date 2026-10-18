@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Dependencies
+
+- **Upgrade the `mcp` gem from `~> 0.7` to `~> 1.8`.** The JSON Schema validator
+  dependency changes from `json-schema` to `json_schemer`; debug-mcp does not use
+  either directly.
+- **The HTTP transport now needs the `rack` gem installed separately.** `mcp` 1.x no
+  longer depends on `rack`, but its `StreamableHTTPTransport` still requires it.
+  debug-mcp keeps `rack` optional so STDIO users (the default) don't install it;
+  `--transport http` without `rack` exits with an install hint
+  (`gem install rack`).
+
+### Bug Fixes
+
+- **Fix the HTTP transport under `mcp` 1.x** — The WEBrick bridge now passes a
+  `Rack::Request` (with `CONTENT_LENGTH` set) instead of a minimal hand-written
+  adapter, which lacked `content_length` and made every request return
+  `Internal server error`. `stringio` is now required explicitly instead of relying
+  on another gem to load it.
+
 ## 0.3.0 — 2026-06-18
 
 ### Features

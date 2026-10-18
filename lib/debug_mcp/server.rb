@@ -263,6 +263,13 @@ module DebugMcp
     end
 
     def start_http(server)
+      begin
+        require "rack"
+      rescue LoadError
+        abort "debug-mcp: the HTTP transport requires the 'rack' gem. " \
+          "Install it with `gem install rack` (or add `gem \"rack\"` to your Gemfile)."
+      end
+      require "stringio"
       require "webrick"
 
       transport = MCP::Server::Transports::StreamableHTTPTransport.new(server)
@@ -276,7 +283,7 @@ module DebugMcp
 
       webrick.mount_proc("/mcp") do |req, res|
         env = build_rack_env(req)
-        rack_request = RackRequestAdapter.new(env)
+        rack_request = Rack::Request.new(env)
         status, headers, body = transport.handle_request(rack_request)
 
         res.status = status
@@ -312,27 +319,16 @@ module DebugMcp
       transport&.close
     end
 
-    # Minimal Rack::Request-compatible adapter for WEBrick
-    class RackRequestAdapter
-      attr_reader :env
-
-      def initialize(env)
-        @env = env
-      end
-
-      def body
-        @env["rack.input"]
-      end
-    end
-
     def build_rack_env(req)
+      body = req.body || ""
       env = {
         "REQUEST_METHOD" => req.request_method,
         "PATH_INFO" => req.path,
         "QUERY_STRING" => req.query_string || "",
         "SERVER_NAME" => @http_host,
         "SERVER_PORT" => @http_port.to_s,
-        "rack.input" => StringIO.new(req.body || ""),
+        "CONTENT_LENGTH" => body.bytesize.to_s,
+        "rack.input" => StringIO.new(body),
       }
 
       # Map HTTP headers to Rack convention

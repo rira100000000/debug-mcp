@@ -147,6 +147,12 @@ debug-mcp
 
 ブラウザベースのクライアントやHTTP対応MCPクライアント向け。
 
+HTTPトランスポートには `rack` gem が必要です。STDIOでは使わないため、debug-mcp と一緒にはインストールされません:
+
+```bash
+gem install rack
+```
+
 ```bash
 debug-mcp --transport http --port 8080
 ```
